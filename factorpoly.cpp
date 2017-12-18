@@ -15,6 +15,17 @@ std::string handler(const std::string& polynomial_string)
     std::vector<Polynomial<VeryLong> > factors;
     VeryLong cont;
     Polynomial<VeryLong>::factor(poly, factors, cont);
+    // Check that poly is fully factored
+    Polynomial<VeryLong> remaining_part(poly);
+    for (auto& factor: factors)
+    {
+        remaining_part /= factor;
+    }
+    if (remaining_part.deg() > 0)
+    {
+        factors.push_back(remaining_part);
+    }
+
     // Check that factors can't be factored more
     bool done = false;
     while (!done)    
