@@ -54,6 +54,7 @@ $$(X + 1)(X^4 - X^3 + X^2 - X + 1)(X^{10} - X^9 + X^8 - X^7 + X^6 - X^5 + X^4 - 
 ## OpenFaas function
 factorpoly can be run as an OpenFaas function, by deploying the function from the image ccard/factorpoly.
 Once deployed, the function can be run e.g. by using curl:
+
 `curl http://localhost:8080/function/factorpoly -X POST --data-binary 'X^55 + 1'`
 
 # References
