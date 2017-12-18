@@ -5,10 +5,15 @@ factorpoly is a standalone single-variate polynomial factorizer, written in C++,
 # Building
 ## Standalone executable
 Clone the code from Github:
+
 `git clone https://github.com/ChrisCGH/factorpoly.git`
+
 Change directory to factorpoly and build using make:
+
 `cd factorpoly`
+
 `make`
+
 This should create the executable `factorpoly` in the same directory.
 ### Dependencies
 The supplied makefile is written for Linux, and assumes that the standard toolchain for building C++ programs is already installed (e.g. make, gcc, g++). In addition the code makes use of [the GNU MP Bignum library](https://www.google.co.uk/url?sa=t&rct=j&q=&esrc=s&source=web&cd=1&cad=rja&uact=8&ved=0ahUKEwjDrOfd7JPYAhVUF8AKHQGLBWMQFggnMAA&url=https%3A%2F%2Fgmplib.org%2F&usg=AOvVaw0J-ZxDUBVNbeR6FiUDVsnH), and assumes that the development library for GMP is installed.
@@ -23,6 +28,7 @@ The latest image can be found [here](https://hub.docker.com/r/ccard/factorpoly/)
 To run the standalone factorpoly simply read a polynomial from stdin:
 
 `$ echo "X^55 + 1" | ./factorpoly`
+
 `(X + 1)(X^10 - X^9 + X^8 - X^7 + X^6 - X^5 + X^4 - X^3 + X^2 - X + 1)(X^4 - X^3 + X^2 - X + 1)(X^40 + X^39 - X^35 - X^34 + X^30 - X^28 - X^25 + X^23 + X^20 + X^17 - X^15 - X^12 + X^10 - X^6 - X^5 + X + 1)`
 
 If the environment variable USE_MATHJAX is set, then the output is an html page which uses mathjax to format the polynomial factors:
