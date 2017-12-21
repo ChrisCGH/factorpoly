@@ -15,6 +15,7 @@ std::string handler(const std::string& polynomial_string)
     std::vector<Polynomial<VeryLong> > factors;
     VeryLong cont;
     Polynomial<VeryLong>::factor(poly, factors, cont);
+#if 0
     // Check that poly is fully factored
     Polynomial<VeryLong> remaining_part(poly);
     for (auto& factor: factors)
@@ -47,7 +48,7 @@ std::string handler(const std::string& polynomial_string)
             factors = newfactors;
         }
     }
-
+#endif
     // Gather common factors
     std::map<std::string, int> gathered_factors;
     for (auto& factor: factors)
