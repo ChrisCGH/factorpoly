@@ -1,6 +1,7 @@
 #ifndef COMBINATIONS_H
 #define COMBINATIONS_H
 #include <vector>
+#include <set>
 #include <iostream>
 
 // a class to iterate through m combinations out of n
@@ -206,6 +207,167 @@ private:
     size_t j_;
     bool done_;
     std::vector<size_t> c_;
+};
+
+// Combinations via Coolex algorithm
+// from "The Coolest Way to Generate Combinations", Ruskey and Williams
+// http://webhome.csc.uvic.ca/~haron/CoolCombo.pdf
+
+class CoolexCombinations
+{
+public:
+    CoolexCombinations(size_t m, size_t n) : m_(m), n_(n), s_(n - m), t_(m), x_(m - 1), y_(m - 1), b_(n), done_(false)
+    {
+        if (m_ > n)
+        {
+            throw std::string("Combinations(m, n) : m must be less than or equal to n");
+        }
+        if (m_ == 0)
+        {
+            throw std::string("Combinations(m, n) : m must be greater than zero");
+        }
+        if (n_ == 0)
+        {
+            throw std::string("Combinations(m, n) : n must be greater than zero");
+        }
+        if (m_ <= n_)
+        {
+            for (size_t i = 0; i < t_; ++i)
+            {
+                b_[i] = true;
+            }
+            for (size_t i = t_; i < s_ + t_; ++i)
+            {
+                b_[i] = false;
+            }
+        }
+        if (m_ == n_)
+        {
+            done_ = true;
+        }
+    }
+
+private:
+    void add(size_t x)
+    {
+        if (removed_.find(x) == removed_.end())
+        {
+            added_.insert(x);
+        }
+        else
+        {
+            removed_.erase(x);
+        }
+    }
+    void remove(size_t x)
+    {
+        if (added_.find(x) == added_.end())
+        {
+            removed_.insert(x);
+        }
+        else
+        {
+            added_.erase(x);
+        }
+    }
+
+public:
+    bool next()
+    {
+        added_.clear();
+        removed_.clear();
+        if (done_) return !done_;
+        b_[x_] = false;
+        remove(x_);
+        b_[y_] = true;
+        add(y_);
+        x_++;
+        y_++;
+        if (!b_[x_])
+        {
+            b_[x_] = true;
+            add(x_);
+            b_[0] = false;
+            remove(0);
+            if (y_ > 1)
+            {
+                x_ = 1;
+            }
+            y_ = 0;
+        }
+        if (x_ + 1 >= s_ + t_) done_ = true;
+
+        return !done_;
+    }
+
+    const std::set<size_t>& added() const
+    {
+        return added_;
+    }
+
+    const std::set<size_t>& removed() const
+    {
+        return removed_;
+    }
+
+    size_t operator() (size_t i) const
+    {
+        if (i >= m_)
+        {
+            throw std::string("Combination::operator() : index out of range");
+        }
+        size_t j = 0;
+        size_t k = 0;
+        for (const auto& bit: b_)
+        {
+            if (bit)
+            {
+                if (j == i)
+                {
+                    break;
+                }
+                j++;
+            }
+            k++;
+        }
+        return k;
+    }
+
+    size_t size() const
+    {
+        return m_;
+    }
+
+    bool done() const
+    {
+        return done_;
+    }
+
+    void display() const
+    {
+        size_t j = 0;
+        for (const auto& bit: b_)
+        {
+            if (bit)
+            {
+                std::cout << j << " ";
+            }
+            j++;
+        }
+        std::cout << std::endl;
+    }
+
+private:
+    size_t m_;
+    size_t n_;
+    size_t s_;
+    size_t t_;
+    size_t x_;
+    size_t y_;
+    std::vector<bool> b_;
+    std::set<size_t> added_;
+    std::set<size_t> removed_;
+    bool done_;
 };
 
 #endif

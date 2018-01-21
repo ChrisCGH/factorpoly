@@ -6,8 +6,20 @@
 #include "Combinations.h"
 #include <algorithm>
 #include <deque>
+#include <set>
 #include <ctype.h>
 #include "MPFloat.h"
+//#define NEW_METHOD 1
+//#define OLD_METHOD 1
+#define THREADED_OLD_METHOD 1
+#ifdef THREADED_OLD_METHOD
+#include <thread>
+#include <queue>
+#include <mutex>
+#include <condition_variable>
+#include <functional>
+#endif
+//#define DO_CHECKS 1
 #if 1
 template <> long int get_long(const VeryLong& i)
 {
@@ -219,6 +231,7 @@ void hensel_lift(const VeryLong& p,
     //cout << "p = " << p << ", q = " << q << endl;
     //cout << "A = " << A << ", B = " << B << ", C = " << C << endl;
     //cout << "U = " << U << ", V = " << V << endl;
+#ifdef DO_CHECKS
     Polynomial<VeryLong> check3 = C - A * B;
     Polynomial<VeryLongModular> check4 = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(check3, q);
     if (check4 != Polynomial<VeryLongModular>(VeryLongModular(0L)))
@@ -226,6 +239,7 @@ void hensel_lift(const VeryLong& p,
         std::cout << "Problem: C - A * B != 0 mod " << q << std::endl;
         std::cout << "check4 = " << check4 << std::endl;
     }
+#endif
     //cout << "C - AB = " << C - A * B << endl;
     VeryLong r = gcd<VeryLong>(p, q);
     // Step 1. [Euclidean division]
@@ -248,11 +262,13 @@ void hensel_lift(const VeryLong& p,
         std::cout << "Problem: euclidean_division of " << V_ * f << " and " << A_ << std::endl;
         std::cout << "gave t = " << t << ", R = " << R << std::endl;
     }
+#ifdef DO_CHECKS
     Polynomial<VeryLongModular> check = V_ * f - A_ * t;
     if (check != R)
     {
         std::cout << "Problem: check != R, check = " << check << ", R = " << R << std::endl;
     }
+#endif
 
     // Step 2. [Terminate]
     Polynomial<VeryLong> A0 = lift<VeryLong, VeryLongModular>(R);
@@ -267,6 +283,7 @@ void hensel_lift(const VeryLong& p,
     //cout << "A1 = " << A1 << endl;
     //cout << "B1 = " << B1 << endl;
     // should have C = A1 * B1 mod qr
+#ifdef DO_CHECKS
     Polynomial<VeryLong> check1 = A1 * B1;
     VeryLongModular::set_default_modulus(q * r);
     Polynomial<VeryLongModular> C2 = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(C, q * r);
@@ -278,6 +295,7 @@ void hensel_lift(const VeryLong& p,
         std::cout << "C mod qr = " << C2 << std::endl;
         std::cout << "A1 * B1 mod qr = " << check2 << std::endl;
     }
+#endif
 }
 
 void hensel_lift(const VeryLong& p,
@@ -304,6 +322,7 @@ void hensel_lift(const VeryLong& p,
     U_ /= g;
     V_ /= g;
     //cout << "U_ = " << U_ << ", V_ = " << V_ << endl;
+#ifdef DO_CHECKS
     Polynomial<VeryLongModular> check = U_ * Ap_ + V_ * Bp_;
     const VeryLongModular one(1L);
     if (check != Polynomial<VeryLongModular>(one))
@@ -312,6 +331,7 @@ void hensel_lift(const VeryLong& p,
         std::cout << "Ap_ = " << Ap_ << ", Bp_ = " << Bp_ << ", gcd(Ap_,Bp_) = " << gcd(Ap_, Bp_) << std::endl;
         std::cout << "U_ = " << U_ << ", V_ = " << V_ << std::endl;
     }
+#endif
     Polynomial<VeryLong> U = lift<VeryLong, VeryLongModular>(U_);
     Polynomial<VeryLong> V = lift<VeryLong, VeryLongModular>(V_);
     Polynomial<VeryLong> A1;
@@ -388,6 +408,7 @@ static VeryLong bound(const Polynomial<VeryLong>& A, int n)
     return B;
 }
 
+#ifdef DO_CHECKS
 void check(const Polynomial<VeryLong>& U,
            const std::deque<Polynomial<VeryLong> >& Ufactors,
            const VeryLong p_power)
@@ -406,6 +427,7 @@ void check(const Polynomial<VeryLong>& U,
         std::cout << "check1 = " << check1 << ", check2 = " << check2 << std::endl;
     }
 }
+#endif
 
 void display(const std::vector<std::vector<int> >& v)
 {
@@ -425,7 +447,8 @@ void display(const std::vector<std::vector<int> >& v)
 std::vector<std::vector<int> > generate_combinations(int r, int d)
 {
     std::vector<std::vector<int> > res;
-    for (Combinations c(d, r); !c.done(); c.next())
+    for (KnuthCombinations c(d, r); !c.done(); c.next())
+    //for (CoolexCombinations c(d, r); !c.done(); c.next())
     {
         std::vector<int> combination;
         for (size_t i = 0; i < c.size(); ++i)
@@ -492,6 +515,238 @@ std::vector<std::vector<int> > generate_combinations_(int r, int d)
     return res;
 }
 
+#ifdef THREADED_OLD_METHOD
+bool process_combination(const Polynomial<VeryLong>& U, const VeryLong& l_U, const VeryLong& p_power, const std::vector<Polynomial<VeryLongModular> > Ufactors_, std::vector<int>& combination, int d, int r, Polynomial<VeryLong>& V, bool debug)
+{
+    const VeryLong two(2L);
+    const Polynomial<VeryLong> unit_poly(VeryLong(1L));
+    Polynomial<VeryLongModular> V_(VeryLongModular(1L));
+    if (debug) std::cerr << ">>>> V_ = ";
+    for (int j = 0; j < d; j++)
+    {
+        int index = combination[j] - 1;
+        if (j == d - 1 && 2 * d == r)
+        {
+            index = 0;
+            combination[j] = 1;
+        }
+        if (debug) std::cerr << "U(" << index + 1 << ")";
+        V_ *= Ufactors_[index];
+    }
+    if (debug) std::cerr << std::endl;
+    Polynomial<VeryLongModular> V__(V_);
+    if (2 * V_.deg() <= U.deg())
+    {
+        V__ *= VeryLongModular(l_U);
+    }
+    else
+    {
+        V__ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U, p_power) / V_;
+    }
+    V = lift<VeryLong, VeryLongModular>(V__);
+    for (int j = 0; j <= V.deg(); j++)
+    {
+        while (two * V.coefficient(j) < -p_power)
+        {
+            V.set_coefficient(j, V.coefficient(j) + p_power);
+        }
+        while (two * V.coefficient(j) >= p_power)
+        {
+            V.set_coefficient(j, V.coefficient(j) - p_power);
+        }
+    }
+    if (debug) std::cerr << ">>>> " << "V = " << V << std::endl;
+    if (V == unit_poly)
+    {
+        return false;
+    }
+    Polynomial<VeryLong> Q = (l_U * U) / V;
+    Polynomial<VeryLong> UUU = Q;
+    UUU *= V;
+    if (UUU == l_U * U)
+    {
+        if (debug) std::cerr << ">>>> " << "V divides l(U)U!" << std::endl;
+        if (debug) std::cerr << ">>>> " << "l(U)U = " << l_U * U << ", V = " << V << std::endl;
+        if (debug) std::cerr << ">>>> " << "l(U)U / V = " << (l_U * U) / V << std::endl;
+        if (debug) 
+        {
+            std::cerr << ">>>> " << "V is" << std::endl;
+            for (int j = 0; j < d; j++)
+            {
+                int index = combination[j];
+                std::cerr << ">>>> U(" << index << ") = " << Ufactors_[index - 1] << std::endl;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+template <typename T>
+class WorkerThread
+{
+    public: 
+        WorkerThread(bool debug = false) : debug_(debug), stopped_(false)
+        {
+        }
+        void set_debug(bool debug) 
+        {
+            debug_ = debug;
+        }
+        void submit(const T& work)
+        {
+            work_.push_back(work);
+        }
+        void run()
+        {
+            worker_thread_ = std::thread([this]()
+                {
+                    if (debug_)
+                    {
+                        std::cerr << "Thread " << std::this_thread::get_id() << " starting : work_.size() = " << work_.size() << std::endl;
+                    }
+                    for (auto& w : work_)
+                    {
+                        w();
+                        if (stopped_) break;
+                    }
+                    if (debug_)
+                    {
+                        std::cerr << "Thread " << std::this_thread::get_id() << " done" << std::endl;
+                    }
+                });
+        }
+        void join()
+        {
+            if (worker_thread_.joinable())
+            {
+                worker_thread_.join();
+            }
+        }
+        void stop()
+        {
+            if (debug_)
+            {
+                std::cerr << "Thread " << std::this_thread::get_id() << " stopping" << std::endl;
+            }
+            stopped_ = true;
+        }
+        ~WorkerThread() 
+        {
+            join();
+        }
+        WorkerThread(const WorkerThread& t) = delete;
+        WorkerThread& operator=(const WorkerThread& t) = delete;
+
+    private:
+        std::vector<T> work_;
+        std::thread worker_thread_;
+        bool debug_;
+        bool stopped_;
+};
+
+template <typename T>
+class WorkerThreadManager
+{
+    public:
+        WorkerThreadManager(size_t thread_count = 4, bool debug = false) 
+            : thread_count_(thread_count), worker_threads_(thread_count), debug_(debug), next_(0)
+        {
+            for (auto& worker_thread: worker_threads_)
+            {
+                worker_thread.set_debug(debug);
+            }
+        }
+        ~WorkerThreadManager() {}
+        WorkerThreadManager(const WorkerThreadManager& t) = delete;
+        WorkerThreadManager& operator=(const WorkerThreadManager& t) = delete;
+        void submit(const T& work)
+        {
+            worker_threads_[next_ % thread_count_].submit(work);
+            next_++;
+        }
+        void run()
+        {
+            for (auto& worker_thread: worker_threads_)
+            {
+                worker_thread.run();
+            }
+        }
+        void wait()
+        {
+            for (auto& worker_thread: worker_threads_)
+            {
+                worker_thread.join();
+            }
+        }
+        void stop()
+        {
+            for (auto& worker_thread: worker_threads_)
+            {
+                worker_thread.stop();
+            }
+        }
+
+    private:
+        size_t thread_count_;
+        std::vector<WorkerThread<T> > worker_threads_;
+        bool debug_;
+        size_t next_;
+
+};
+
+bool process_combinations(const Polynomial<VeryLong>& U, const VeryLong& l_U, const std::vector<Polynomial<VeryLongModular> >& Ufactors_, const VeryLong& p_power, int d, int r, Polynomial<VeryLong>& V, std::vector<int>& V_combination, bool debug)
+{
+    std::vector<std::vector<int> > combination_set = generate_combinations(r, d);
+    bool factorFound = false;
+    typedef std::function<void ()> worker_function;
+    WorkerThreadManager<worker_function> manager(2, debug);
+    std::mutex result_mutex;
+    std::vector<int> factor_combination;
+    Polynomial<VeryLong> factor;
+    auto factor_found_callback = [&result_mutex, &factorFound, &factor_combination, &factor, &manager, debug](const std::vector<int>& combination, const Polynomial<VeryLong>& V)
+        {
+            std::lock_guard<std::mutex> lock(result_mutex);
+            if (debug) std::cerr << "In factor_found_callback for V = [" << V << "] : " << std::this_thread::get_id() << std::endl;
+            factor_combination = combination;
+            factor = V;
+            factorFound = true;
+            manager.stop();
+        };
+    for (size_t comb = 0; comb < combination_set.size(); comb++)
+    {
+        auto f = [U, l_U, p_power, Ufactors_, &combination = combination_set[comb], d, r, &factor_found_callback, s = combination_set.size(), debug]() 
+                 {
+                     Polynomial<VeryLong> V_;
+                     if (process_combination(U, l_U, p_power, Ufactors_, combination, d, r, V_, debug))
+                     { 
+                         // result is (combination, V_)
+                         factor_found_callback(combination, V_);
+                     }
+                     return;
+                 };
+        manager.submit(f);
+    }
+    manager.run();
+    manager.wait();
+    V = factor;
+    V_combination = factor_combination;
+    if (debug)
+    {
+        if (factorFound)
+        {
+            std::cerr << "process_combinations: V = " << V << std::endl;
+        }
+        else
+        {
+            std::cerr << "process_combinations: no factor found" << std::endl;
+        }
+    }
+    return factorFound;
+}
+#endif
+
+#ifdef OLD_METHOD
 // Algorithm 3.5.7 (Factor in Z[X])
 template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, std::vector<Polynomial<VeryLong> >& factors, VeryLong& cont)
 {
@@ -544,16 +799,22 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
         {
             factor_over_F_p<VeryLong, VeryLong, VeryLongModular>(U, p, Ufactors_);
             if (debug) std::cout << ">>>> " << "factors of " << U << " mod " << p << " are:" << std::endl;
+#ifdef DO_CHECKS
             Polynomial<VeryLongModular> check(one);
+#endif
             for (size_t i = 0; i < Ufactors_.size(); i++)
             {
                 if (debug) std::cout << ">>>> " << Ufactors_[i] << std::endl;
+#ifdef DO_CHECKS
                 check *= Ufactors_[i];
+#endif
             }
+#ifdef DO_CHECKS
             if (check != Up)
             {
                 std::cout << "Problem: check = " << check << ", Up = " << Up << std::endl;
             }
+#endif
             done = 1;
         }
         else p = VeryLong::nextPrime();
@@ -601,13 +862,17 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
         Ufactors = liftedUfactors;
         liftedUfactors.clear();
         p_power *= p;
+#ifdef DO_CHECKS
         check(U, Ufactors, p_power);
+#endif
     }
     // leaves loop with p_power = p^e
     if (debug) std::cout << ">>>> " << "factors of " << U << " mod " << p << "^" << e << " = " << p_power << ", are:" << std::endl;
 
     VeryLongModular::set_default_modulus(p_power);
+#ifdef DO_CHECKS
     Polynomial<VeryLong> check(VeryLong(1L));
+#endif
     Ufactors_.clear();
     for (size_t i = 0; i < Ufactors.size(); i++)
     {
@@ -619,8 +884,11 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
         Ufactors_.push_back(Ui_);
         Ufactors[i] = lift<VeryLong, VeryLongModular>(Ui_);
         if (debug) std::cout << ">>>> Lifted: " << Ufactors[i] << std::endl;
+#ifdef DO_CHECKS
         check *= Ufactors[i];
+#endif
     }
+#ifdef DO_CHECKS
     check *= l_U;
     Polynomial<VeryLongModular> check1 = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(check, p_power);
     Polynomial<VeryLongModular> check2 = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U, p_power);
@@ -632,13 +900,11 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
         std::cout << "check2 = " << check2 << std::endl;
         std::cout << "check1 - check2 = " << check1 - check2 << std::endl;
     }
+#endif
 
     int r = static_cast<int>(Ufactors.size());
     int d = 1;
 
-    Polynomial<VeryLongModular> U_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U, p_power);
-    Polynomial<Quotient<VeryLong> > Uq = convert_to_quotient_field<VeryLong>(U);
-    const Polynomial<Quotient<VeryLong> > zero_qp(Quotient<VeryLong>(0L));
     done = 0;
     while (!done)
     {
@@ -660,7 +926,7 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
             */
             Polynomial<VeryLong> V;
             std::vector<std::vector<int> > combination_set = generate_combinations(r, d);
-            //display(combination_set);
+            display(combination_set);
             int factorFound = 0;
             for (size_t comb = 0; !factorFound && comb < combination_set.size(); comb++)
             {
@@ -679,11 +945,15 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
                 }
                 if (debug) std::cout << std::endl;
                 Polynomial<VeryLongModular> V__(V_);
+#ifdef DO_CHECKS
                 bool small_v(false);
-                if (2 * V.deg() <= U.deg())
+#endif
+                if (2 * V_.deg() <= U.deg())
                 {
                     V__ *= VeryLongModular(l_U);
+#ifdef DO_CHECKS
                     small_v = true;
+#endif
                 }
                 else
                 {
@@ -702,6 +972,7 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
                     }
                 }
                 if (debug) std::cout << ">>>> " << "V = " << V << std::endl;
+#ifdef DO_CHECKS
                 if (small_v)
                 {
                     // Check V === l(U)V_ mod p^e
@@ -730,6 +1001,7 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
                         std::cout << "check1 - check2 = " << check1 - check2 << std::endl;
                     }
                 }
+#endif
                 Polynomial<VeryLong> Q = (l_U * U) / V;
                 Polynomial<VeryLong> UUU = Q;
                 UUU *= V;
@@ -741,7 +1013,7 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
                     if (debug) std::cout << ">>>> " << "l(U)U / V = " << (l_U * U) / V << std::endl;
                     if (debug) 
                     {
-                        std::cout << ">>>> " << "V is product of:" << std::endl;
+                        std::cout << ">>>> " << "V is" << std::endl;
                         for (int j = 0; j < d; j++)
                         {
                             int index = combination_set[comb][j];
@@ -763,7 +1035,6 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
                         for (int k = 0; k < r; k++)
                         {
                             int j = 0;
-                            //for (j = 0; combination_set[comb][j] - 1 != k && j < d; j++);
                             for (j = 0; j < d && combination_set[comb][j] - 1 != k; j++);
                             if (j >= d) newUf_.push_back(Ufactors_[k]);
                         }
@@ -805,3 +1076,605 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
         for (int k = 0; k < v; k++) factors.push_back(F);
     }
 }
+#endif
+
+#ifdef NEW_METHOD
+// Algorithm 3.5.7 (Factor in Z[X])
+template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, std::vector<Polynomial<VeryLong> >& factors, VeryLong& cont)
+{
+    const VeryLong zero(0L);
+    const VeryLong two(2L);
+    bool debug(false);
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT")) debug = true;
+    if (debug) std::cout << ">>>> " << "In Polynomial<VeryLong>::factor()" << std::endl;
+
+    Polynomial<VeryLong> A = AA;
+    // Step 1. [Reduce to squarefree and primitive]
+    cont = A.content();
+    A = A / cont;
+    if (A.coefficient(A.deg()) < zero && cont > zero) cont = -cont;
+    if (debug) std::cout << ">>>> " <<  "A = " << A << std::endl;
+    Polynomial<VeryLong> A1 = A.derivative();
+    if (debug) std::cout << ">>>> " << "A' = " << A1 << std::endl;
+
+    Polynomial<VeryLong> U = A / sub_resultant_GCD(A, A1);
+    if (debug) std::cout << ">>>> " << "U = " << U << std::endl;
+
+    if (U.deg() == 1)
+    {
+        if (U.coefficient(1) < zero) U = -U;
+        for (int i = 0; i < A.deg(); i++) factors.push_back(U);
+        return;
+    }
+    VeryLong l_U = U.coefficient(U.deg());
+
+    VeryLong::generate_prime_table();
+    VeryLong p = VeryLong::firstPrime();
+
+    // Step 2. [Find a squarefree factorization mod p]
+    int done = 0;
+    std::vector<Polynomial<VeryLongModular> > Ufactors_;
+    while (!done)
+    {
+        while (l_U % p == zero) p = VeryLong::nextPrime();
+        if (debug) std::cout << ">>>> " << "p = " << p << std::endl;
+        VeryLongModular::set_default_modulus(p);
+        const VeryLongModular one(1L);
+        Polynomial<VeryLongModular> Up = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U, p);
+        Polynomial<VeryLongModular> U1p = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U.derivative(), p);
+        if (debug) std::cout << ">>>> " << "U mod p = " << Up << std::endl;
+        if (debug) std::cout << ">>>> " << "U' mod p = " << U1p << std::endl;
+        Polynomial<VeryLongModular> g = gcd<Polynomial<VeryLongModular> >(Up, U1p);
+        if (debug) std::cout << ">>>> " << "(U, U') mod p = " << g << std::endl;
+
+        if (g.deg() == 0)
+        {
+            factor_over_F_p<VeryLong, VeryLong, VeryLongModular>(U, p, Ufactors_);
+            if (debug) std::cout << ">>>> " << "factors of " << U << " mod " << p << " are:" << std::endl;
+#ifdef DO_CHECKS
+            Polynomial<VeryLongModular> check(one);
+#endif
+            for (size_t i = 0; i < Ufactors_.size(); i++)
+            {
+                if (debug) std::cout << ">>>> " << Ufactors_[i] << std::endl;
+#ifdef DO_CHECKS
+                check *= Ufactors_[i];
+#endif
+            }
+#ifdef DO_CHECKS
+            if (check != Up)
+            {
+                std::cout << "Problem: check = " << check << ", Up = " << Up << std::endl;
+            }
+#endif
+            done = 1;
+        }
+        else p = VeryLong::nextPrime();
+    }
+
+    // Step 3. [Find bound]
+    VeryLong B = bound(U, U.deg() / 2);
+    if (debug) std::cout << ">>>> " << "B = " << B << std::endl;
+    int e = 1;
+    VeryLong p_e = p;
+    VeryLong B1 = two * B * U.coefficient(U.deg());
+    if (B1 < zero) B1 = -B1;
+
+    while (p_e <= B1)
+    {
+        p_e *= p;
+        e++;
+    }
+    if (debug) std::cout << ">>>> " << "e = " << e << std::endl;
+    // e is the smallest integer such that p^e > 2*B*l(U)
+
+    // Step 4. [Lift factorization]
+    // Lift factors in Ufactors_ to factors mod p^e
+    // Just do it simply first, by repeated calls to hensel_lift
+    std::deque<Polynomial<VeryLong> > Ufactors;
+    VeryLongModular::set_default_modulus(p);
+    for (size_t i = 0; i < Ufactors_.size(); i++)
+    {
+        Ufactors.push_back(lift<VeryLong, VeryLongModular>(Ufactors_[i]));
+    }
+    if (Ufactors.size() == 1)
+    {
+        Ufactors.push_back(Polynomial<VeryLong>(VeryLong(1L)));
+    }
+    VeryLong p_power = p;
+    std::deque<Polynomial<VeryLong> > liftedUfactors;
+    for (int i = 0; i < e - 1; i++)
+    {
+        // at this point
+        // i = 0, p_power = p
+        // i = 1, p_power = p^2
+        // ...
+        // i = e - 2, p_power = p^(e-1), so lift to factors mod p^e
+        hensel_lift(p, p_power, U, Ufactors, liftedUfactors);
+        Ufactors = liftedUfactors;
+        liftedUfactors.clear();
+        p_power *= p;
+#ifdef DO_CHECKS
+        check(U, Ufactors, p_power);
+#endif
+    }
+    // leaves loop with p_power = p^e
+    if (debug) std::cout << ">>>> " << "factors of " << U << " mod " << p << "^" << e << " = " << p_power << ", are:" << std::endl;
+
+    VeryLongModular::set_default_modulus(p_power);
+#ifdef DO_CHECKS
+    Polynomial<VeryLong> check(VeryLong(1L));
+#endif
+    Ufactors_.clear();
+    for (size_t i = 0; i < Ufactors.size(); i++)
+    {
+        if (debug) std::cout << ">>>> " << Ufactors[i] << std::endl;
+        Polynomial<VeryLongModular> Ui_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(Ufactors[i], p_power);
+        if (debug) std::cout << ">>>> U(" << i + 1 << ") = " << Ui_ << std::endl;
+        Ui_.make_monic();
+        if (debug) std::cout << ">>>> Monic: " << Ui_ << std::endl;
+        Ufactors_.push_back(Ui_);
+        Ufactors[i] = lift<VeryLong, VeryLongModular>(Ui_);
+        if (debug) std::cout << ">>>> Lifted: " << Ufactors[i] << std::endl;
+#ifdef DO_CHECKS
+        check *= Ufactors[i];
+#endif
+    }
+#ifdef DO_CHECKS
+    check *= l_U;
+    Polynomial<VeryLongModular> check1 = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(check, p_power);
+    Polynomial<VeryLongModular> check2 = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U, p_power);
+
+    if (check1 - check2 != Polynomial<VeryLongModular>(VeryLongModular(0L)))
+    {
+        std::cout << "Problem in factors:" << std::endl;
+        std::cout << "check1 = " << check1 << std::endl;
+        std::cout << "check2 = " << check2 << std::endl;
+        std::cout << "check1 - check2 = " << check1 - check2 << std::endl;
+    }
+#endif
+
+    int r = static_cast<int>(Ufactors.size());
+    int d = 1;
+
+    done = 0;
+    while (!done)
+    {
+        int done5 = 0;
+        while (!done5)
+        {
+            if (debug) std::cout << ">>>> Step 5, d = " << d << ", r = " << r << std::endl;
+            /* Step 5. [Try combination]
+            // find all combinations of factors in Ufactor of length d
+            // and check whether they divide U
+            // If d = r/2, take i_d = 1
+            // If we have r factors and length d, there are
+            // / r \
+            // |   | = r! / d! (r - d)! combinations
+            // \ d /
+            // but in the case d = r/2 we only want to consider
+            // half of them, since by induction the remainder must be
+            // the other factor.
+            */
+            Polynomial<VeryLong> V;
+            bool first = true;
+            Polynomial<VeryLongModular> V_(VeryLongModular(1L));
+            int factorFound = 0;
+            std::set<size_t> cs;
+            for (CoolexCombinations c(d, r); !factorFound && !c.done(); c.next())
+            {
+                if (debug) std::cout << ">>>> V_ = ";
+                if (first || d < 3)
+                {
+                    cs.clear();
+                    V_ = VeryLongModular(1L);
+                    for (size_t i = 0; i < c.size(); ++i)
+                    {
+                        size_t index = c(i);
+#if 0
+                        if ((int)i == d - 1 && 2 * d == r)
+                        {
+                            index = 0;
+                        }
+#endif
+                        if (debug) std::cout << "U(" << index + 1 << ")";
+                        V_ *= Ufactors_[index];
+                        cs.insert(index);
+                    }
+                    first = false;
+                }
+                else
+                {
+                    cs.clear();
+                    for (size_t i = 0; i < c.size(); ++i)
+                    {
+                        size_t index = c(i);
+                        if (debug) std::cout << "U(" << index + 1 << ")";
+                        cs.insert(index);
+                    }
+                    if (debug) std::cout << std::endl;
+                    for (const auto& rem: c.removed())
+                    {
+                        if (debug) std::cout << "(removed U(" << rem + 1 << "))";
+                        V_ /= Ufactors_[rem];
+                    }
+                    for (const auto& add: c.added())
+                    {
+                        if (debug) std::cout << "(added U(" << add + 1 << "))";
+                        V_ *= Ufactors_[add];
+                    }
+                }
+                if (debug) std::cout << std::endl;
+                Polynomial<VeryLongModular> V__(V_);
+#ifdef DO_CHECKS
+                bool small_v(false);
+#endif
+                if (2 * V_.deg() <= U.deg())
+                {
+                    V__ *= VeryLongModular(l_U);
+#ifdef DO_CHECKS
+                    small_v = true;
+#endif
+                }
+                else
+                {
+                    V__ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U, p_power) / V_;
+                }
+                V = lift<VeryLong, VeryLongModular>(V__);
+                for (int j = 0; j <= V.deg(); j++)
+                {
+                    while (two * V.coefficient(j) < -p_power)
+                    {
+                        V.set_coefficient(j, V.coefficient(j) + p_power);
+                    }
+                    while (two * V.coefficient(j) >= p_power)
+                    {
+                        V.set_coefficient(j, V.coefficient(j) - p_power);
+                    }
+                }
+                if (debug) std::cout << ">>>> " << "V = " << V << std::endl;
+#ifdef DO_CHECKS
+                if (small_v)
+                {
+                    // Check V === l(U)V_ mod p^e
+                    Polynomial<VeryLongModular> check1 = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(V, p_power);
+                    Polynomial<VeryLongModular> check2(V_);
+                    check2 *= VeryLongModular(l_U);
+                    if (check1 - check2 != Polynomial<VeryLongModular>(VeryLongModular(0L)))
+                    {
+                        std::cout << "Problem: V !=== l(U)V_ mod p^e" << std::endl;
+                        std::cout << "check1 = " << check1 << std::endl;
+                        std::cout << "check2 = " << check2 << std::endl;
+                        std::cout << "check1 - check2 = " << check1 - check2 << std::endl;
+                    }
+                }
+                else
+                {
+                    // Check V === U/V_ mod p^e
+                    Polynomial<VeryLongModular> check1 = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(V, p_power);
+                    Polynomial<VeryLongModular> check2 = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U, p_power);
+                    check2 = check2 / V_;
+                    if (check1 - check2 != Polynomial<VeryLongModular>(VeryLongModular(0L)))
+                    {
+                        std::cout << "Problem: V !=== U/V_ mod p^e" << std::endl;
+                        std::cout << "check1 = " << check1 << std::endl;
+                        std::cout << "check2 = " << check2 << std::endl;
+                        std::cout << "check1 - check2 = " << check1 - check2 << std::endl;
+                    }
+                }
+#endif
+                Polynomial<VeryLong> Q = (l_U * U) / V;
+                Polynomial<VeryLong> UUU = Q;
+                UUU *= V;
+                //if (Q * V == l_U * U)
+                if (UUU == l_U * U)
+                {
+                    if (debug) std::cout << ">>>> " << "V divides l(U)U!" << std::endl;
+                    if (debug) std::cout << ">>>> " << "l(U)U = " << l_U * U << ", V = " << V << std::endl;
+                    if (debug) std::cout << ">>>> " << "l(U)U / V = " << (l_U * U) / V << std::endl;
+                    if (debug) 
+                    {
+                        std::cout << ">>>> " << "V is" << std::endl;
+                        for (auto& index: cs)
+                        {
+                            std::cout << ">>>> U(" << index + 1 << ") = " << Ufactors_[index] << std::endl;
+                        }
+                    }
+                    Polynomial<VeryLong> F = V;
+                    F.make_primitive();
+                    if (F.coefficient(F.deg()) < zero) F = -F;
+                    if (debug) std::cout << ">>>> " << "F = " << F << std::endl;
+                    U = U / F;
+                    int v = exponent(A, F);
+                    for (int k = 0; k < v; k++) factors.push_back(F);
+                    l_U = U.coefficient(U.deg());
+                    // remove Ui from Ufactors_
+                    std::vector<Polynomial<VeryLongModular> > newUf_;
+                    if (2 * d <= r)
+                    {
+                        for (int k = 0; k < r; k++)
+                        {
+                            if (cs.find(k) == cs.end())
+                            {
+                                newUf_.push_back(Ufactors_[k]);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for (auto& index: cs)
+                        {
+                            newUf_.push_back(Ufactors_[index]);
+                        }
+                    }
+                    Ufactors_ = newUf_;
+                    r = static_cast<int>(Ufactors_.size());
+                    if (2 * d > r) done5 = 1;
+                    factorFound = 1;
+                }
+            }
+            // We are here if we've found a factor among the combinations, or if
+            // the combinations have been exhausted with no fact found.
+            // In the latter case we want to go to step 6:
+            if (!factorFound) done5 = 1;
+            // Otherwise we go round again with the reduced U
+        } // this loop is exited if done5 = 1
+
+        // Step 6.
+        if (debug) std::cout << ">>>> Step 6, d = " << d << ", r = " << r << std::endl;
+        d++;
+        if (2 * d > r) done = 1;
+    }
+
+    // primitive part of U is remaining factor.
+    if (U.deg() > 0)
+    {
+        Polynomial<VeryLong> F = U;
+        F.make_primitive();
+        if (F.coefficient(F.deg()) < zero) F = -F;
+        if (debug) std::cout << ">>>> " << "F = " << F << std::endl;
+        int v = exponent(A, F);
+        for (int k = 0; k < v; k++) factors.push_back(F);
+    }
+}
+#endif
+
+#ifdef THREADED_OLD_METHOD
+// Algorithm 3.5.7 (Factor in Z[X])
+template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, std::vector<Polynomial<VeryLong> >& factors, VeryLong& cont)
+{
+    const VeryLong zero(0L);
+    const VeryLong two(2L);
+    bool debug(false);
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT")) debug = true;
+    if (debug) std::cout << ">>>> " << "In Polynomial<VeryLong>::factor()" << std::endl;
+
+    Polynomial<VeryLong> A = AA;
+    // Step 1. [Reduce to squarefree and primitive]
+    cont = A.content();
+    A = A / cont;
+    if (A.coefficient(A.deg()) < zero && cont > zero) cont = -cont;
+    if (debug) std::cout << ">>>> " <<  "A = " << A << std::endl;
+    Polynomial<VeryLong> A1 = A.derivative();
+    if (debug) std::cout << ">>>> " << "A' = " << A1 << std::endl;
+
+    Polynomial<VeryLong> U = A / sub_resultant_GCD(A, A1);
+    if (debug) std::cout << ">>>> " << "U = " << U << std::endl;
+
+    if (U.deg() == 1)
+    {
+        if (U.coefficient(1) < zero) U = -U;
+        for (int i = 0; i < A.deg(); i++) factors.push_back(U);
+        return;
+    }
+    VeryLong l_U = U.coefficient(U.deg());
+
+    VeryLong::generate_prime_table();
+    VeryLong p = VeryLong::firstPrime();
+
+    // Step 2. [Find a squarefree factorization mod p]
+    int done = 0;
+    std::vector<Polynomial<VeryLongModular> > Ufactors_;
+    while (!done)
+    {
+        while (l_U % p == zero) p = VeryLong::nextPrime();
+        if (debug) std::cout << ">>>> " << "p = " << p << std::endl;
+        VeryLongModular::set_default_modulus(p);
+        const VeryLongModular one(1L);
+        Polynomial<VeryLongModular> Up = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U, p);
+        Polynomial<VeryLongModular> U1p = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U.derivative(), p);
+        if (debug) std::cout << ">>>> " << "U mod p = " << Up << std::endl;
+        if (debug) std::cout << ">>>> " << "U' mod p = " << U1p << std::endl;
+        Polynomial<VeryLongModular> g = gcd<Polynomial<VeryLongModular> >(Up, U1p);
+        if (debug) std::cout << ">>>> " << "(U, U') mod p = " << g << std::endl;
+
+        if (g.deg() == 0)
+        {
+            factor_over_F_p<VeryLong, VeryLong, VeryLongModular>(U, p, Ufactors_);
+            if (debug) std::cout << ">>>> " << "factors of " << U << " mod " << p << " are:" << std::endl;
+#ifdef DO_CHECKS
+            Polynomial<VeryLongModular> check(one);
+#endif
+            for (size_t i = 0; i < Ufactors_.size(); i++)
+            {
+                if (debug) std::cout << ">>>> " << Ufactors_[i] << std::endl;
+#ifdef DO_CHECKS
+                check *= Ufactors_[i];
+#endif
+            }
+#ifdef DO_CHECKS
+            if (check != Up)
+            {
+                std::cout << "Problem: check = " << check << ", Up = " << Up << std::endl;
+            }
+#endif
+            done = 1;
+        }
+        else p = VeryLong::nextPrime();
+    }
+
+    // Step 3. [Find bound]
+    VeryLong B = bound(U, U.deg() / 2);
+    if (debug) std::cout << ">>>> " << "B = " << B << std::endl;
+    int e = 1;
+    VeryLong p_e = p;
+    VeryLong B1 = two * B * U.coefficient(U.deg());
+    if (B1 < zero) B1 = -B1;
+
+    while (p_e <= B1)
+    {
+        p_e *= p;
+        e++;
+    }
+    if (debug) std::cout << ">>>> " << "e = " << e << std::endl;
+    // e is the smallest integer such that p^e > 2*B*l(U)
+
+    // Step 4. [Lift factorization]
+    // Lift factors in Ufactors_ to factors mod p^e
+    // Just do it simply first, by repeated calls to hensel_lift
+    std::deque<Polynomial<VeryLong> > Ufactors;
+    VeryLongModular::set_default_modulus(p);
+    for (size_t i = 0; i < Ufactors_.size(); i++)
+    {
+        Ufactors.push_back(lift<VeryLong, VeryLongModular>(Ufactors_[i]));
+    }
+    if (Ufactors.size() == 1)
+    {
+        Ufactors.push_back(Polynomial<VeryLong>(VeryLong(1L)));
+    }
+    VeryLong p_power = p;
+    std::deque<Polynomial<VeryLong> > liftedUfactors;
+    for (int i = 0; i < e - 1; i++)
+    {
+        // at this point
+        // i = 0, p_power = p
+        // i = 1, p_power = p^2
+        // ...
+        // i = e - 2, p_power = p^(e-1), so lift to factors mod p^e
+        hensel_lift(p, p_power, U, Ufactors, liftedUfactors);
+        Ufactors = liftedUfactors;
+        liftedUfactors.clear();
+        p_power *= p;
+#ifdef DO_CHECKS
+        check(U, Ufactors, p_power);
+#endif
+    }
+    // leaves loop with p_power = p^e
+    if (debug) std::cout << ">>>> " << "factors of " << U << " mod " << p << "^" << e << " = " << p_power << ", are:" << std::endl;
+
+    VeryLongModular::set_default_modulus(p_power);
+#ifdef DO_CHECKS
+    Polynomial<VeryLong> check(VeryLong(1L));
+#endif
+    Ufactors_.clear();
+    for (size_t i = 0; i < Ufactors.size(); i++)
+    {
+        if (debug) std::cout << ">>>> " << Ufactors[i] << std::endl;
+        Polynomial<VeryLongModular> Ui_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(Ufactors[i], p_power);
+        if (debug) std::cout << ">>>> U(" << i + 1 << ") = " << Ui_ << std::endl;
+        Ui_.make_monic();
+        if (debug) std::cout << ">>>> Monic: " << Ui_ << std::endl;
+        Ufactors_.push_back(Ui_);
+        Ufactors[i] = lift<VeryLong, VeryLongModular>(Ui_);
+        if (debug) std::cout << ">>>> Lifted: " << Ufactors[i] << std::endl;
+#ifdef DO_CHECKS
+        check *= Ufactors[i];
+#endif
+    }
+#ifdef DO_CHECKS
+    check *= l_U;
+    Polynomial<VeryLongModular> check1 = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(check, p_power);
+    Polynomial<VeryLongModular> check2 = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U, p_power);
+
+    if (check1 - check2 != Polynomial<VeryLongModular>(VeryLongModular(0L)))
+    {
+        std::cout << "Problem in factors:" << std::endl;
+        std::cout << "check1 = " << check1 << std::endl;
+        std::cout << "check2 = " << check2 << std::endl;
+        std::cout << "check1 - check2 = " << check1 - check2 << std::endl;
+    }
+#endif
+
+    int r = static_cast<int>(Ufactors.size());
+    int d = 1;
+    done = 0;
+    while (!done)
+    {
+        int done5 = 0;
+        while (!done5)
+        {
+            //if (debug) std::cout << ">>>> Step 5, d = " << d << ", r = " << r << std::endl;
+            std::cout << ">>>> Step 5, d = " << d << ", r = " << r << std::endl;
+            /* Step 5. [Try combination]
+            // find all combinations of factors in Ufactor of length d
+            // and check whether they divide U
+            // If d = r/2, take i_d = 1
+            // If we have r factors and length d, there are
+            // / r \
+            // |   | = r! / d! (r - d)! combinations
+            // \ d /
+            // but in the case d = r/2 we only want to consider
+            // half of them, since by induction the remainder must be
+            // the other factor.
+            */
+            Polynomial<VeryLong> V;
+            std::vector<int> V_combination;
+            //display(combination_set);
+            bool factorFound = process_combinations(U, l_U, Ufactors_, p_power, d, r, V, V_combination, debug);
+            if (factorFound)
+            {
+                Polynomial<VeryLong> F = V;
+                F.make_primitive();
+                if (F.coefficient(F.deg()) < zero) F = -F;
+                std::cout << ">>>> " << "F = " << F << std::endl;
+                U = U / F;
+                int v = exponent(A, F);
+                for (int k = 0; k < v; k++) factors.push_back(F);
+                l_U = U.coefficient(U.deg());
+                // remove Ui from Ufactors_
+                std::vector<Polynomial<VeryLongModular> > newUf_;
+                if (2 * d <= r)
+                {
+                    for (int k = 0; k < r; k++)
+                    {
+                        int j = 0;
+                        for (j = 0; j < d && V_combination[j] - 1 != k; j++);
+                        if (j >= d) newUf_.push_back(Ufactors_[k]);
+                    }
+                }
+                else
+                {
+                    for (int j = 0; j < d; j++)
+                    {
+                        newUf_.push_back(Ufactors_[V_combination[j] - 1]);
+                    }
+                }
+                Ufactors_ = newUf_;
+                r = static_cast<int>(Ufactors_.size());
+                if (2 * d > r) done5 = 1;
+            }
+            // We are here if we've found a factor among the combinations, or if
+            // the combinations have been exhausted with no fact found.
+            // In the latter case we want to go to step 6:
+            if (!factorFound) done5 = 1;
+            // Otherwise we go round again with the reduced U
+        } // this loop is exited if done5 = 1
+
+        // Step 6.
+        if (debug) std::cout << ">>>> Step 6, d = " << d << ", r = " << r << std::endl;
+        d++;
+        if (2 * d > r) done = 1;
+    }
+
+    // primitive part of U is remaining factor.
+    if (U.deg() > 0)
+    {
+        Polynomial<VeryLong> F = U;
+        F.make_primitive();
+        if (F.coefficient(F.deg()) < zero) F = -F;
+        if (debug) std::cout << ">>>> " << "F = " << F << std::endl;
+        int v = exponent(A, F);
+        for (int k = 0; k < v; k++) factors.push_back(F);
+    }
+}
+#endif
