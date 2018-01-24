@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstring>
 #include <cstdlib>
+#include <iostream>
 using std::complex;
 using std::norm;
 #include "pow.h"
@@ -1289,9 +1290,9 @@ FLOAT minimize_size(const Polynomial<complex<FLOAT > >& P, complex<FLOAT>& x)
     const long int SAMPLE_SIZE = 10;
     const long int sample_size = SAMPLE_SIZE;
     const FLOAT r(10.0); // length of vector;
-    static FLOAT s_vec[sample_size];
-    static FLOAT t_vec[sample_size];
-    static int first_time = 1;
+    static thread_local FLOAT s_vec[sample_size];
+    static thread_local FLOAT t_vec[sample_size];
+    static thread_local int first_time = 1;
 
     if (first_time)
     {
@@ -1658,6 +1659,7 @@ template <class INTEGER, class INTEGER2, class MODULAR_INTEGER>
 Polynomial<MODULAR_INTEGER> convert_to_F_p(const Polynomial<INTEGER>& zpoly, const INTEGER2& modulus)
 {
     MODULAR_INTEGER::set_default_modulus(modulus);
+    
     std::vector<MODULAR_INTEGER > fplcoefficients;
     fplcoefficients.resize(zpoly.deg() + 1);
 

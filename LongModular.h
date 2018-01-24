@@ -1,6 +1,7 @@
 #ifndef __LONGMODULAR_H
 #define __LONGMODULAR_H
 #include <iostream>
+#include <thread>
 using std::ostream;
 #include "VeryLong.h"
 extern "C"
@@ -74,7 +75,7 @@ public:
     }
     LongModular square_root() const;
 private:
-    static unsigned long int modulus_;
+    static thread_local unsigned long int modulus_;
     static void staticInit()
     {
         if (!staticInitDone)
@@ -83,7 +84,7 @@ private:
             staticInitDone = true;
         }
     }
-    static bool staticInitDone;
+    static thread_local bool staticInitDone;
     unsigned long int _li;
 };
 #endif

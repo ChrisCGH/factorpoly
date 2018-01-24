@@ -1,7 +1,9 @@
 #ifndef __VERYLONGMODULAR_H
 #define __VERYLONGMODULAR_H
 #include <iostream>
+#include <sstream>
 #include "VeryLong.h"
+#include <thread>
 extern "C"
 {
 #include <gmp.h>
@@ -86,9 +88,9 @@ public:
         return vl;
     }
 private:
-    static mpz_t modulus_;
+    static thread_local mpz_t modulus_;
     mpz_t vl_;
-    static int staticInitDone;
+    static thread_local int staticInitDone;
     static void staticInit()
     {
         if (!staticInitDone)

@@ -2767,7 +2767,7 @@ find_x_data(
     verylong *xint
 )
 {
-    static verylong aux=0;
+    static thread_local verylong aux=0;
     zintoz(1,&aux);
     zlshift(aux,lp-1,&aux);
     zsdiv(aux,lc,&aux);
@@ -2786,8 +2786,8 @@ find_x(
     long lp
 )
 {
-    static verylong xlow[BOUND], xint[BOUND];
-    static long non_init=1, lastlp = 0;
+    static thread_local verylong xlow[BOUND], xint[BOUND];
+    static thread_local long non_init=1, lastlp = 0;
     register long i;
     if (non_init)
     {
@@ -2810,8 +2810,8 @@ long find_q(
     long lq
 )
 {
-    static verylong lowq=0, highq=0, nq=0;
-    static long lastlq=0, p;
+    static thread_local verylong lowq=0, highq=0, nq=0;
+    static thread_local long lastlq=0, p;
     if (lq != lastlq)
     {
         lastlq = lq;
@@ -2845,9 +2845,9 @@ long find_p(
 )
 {
     register long a2, a1, a0;
-    static verylong lowp=0, highp=0;
-    static long lastlp=0;
-    static verylong x2=0, x3=0, x4=0, x5=0, aux=0;
+    static thread_local verylong lowp=0, highp=0;
+    static thread_local long lastlp=0;
+    static thread_local verylong x2=0, x3=0, x4=0, x5=0, aux=0;
     if (lp != lastlp)
     {
         lastlp = lp;
@@ -2899,7 +2899,7 @@ find_p_q_g(
 )
 {
     long escape = 1;
-    static verylong frac = 0, mont_one = 0;
+    static thread_local verylong frac = 0, mont_one = 0;
     if (p_initialized) zdiv(*p,*q,&frac,&mont_one);
     else if (q_initialized)
     {

@@ -319,8 +319,8 @@ public:
 
     static MPFloat random()
     {
-        static int first_time = 1;
-        static gmp_randstate_t rand_state;
+        static thread_local int first_time = 1;
+        static thread_local gmp_randstate_t rand_state;
         if (first_time)
         {
             first_time = 0;

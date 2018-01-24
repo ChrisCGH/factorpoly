@@ -8,7 +8,7 @@ template <class I> int legendre(const I& aa, const I& bb)
     const I zero(0L);
     const I one(1L);
     const I two(2L);
-    static int tab2[8] =
+    static thread_local int tab2[8] =
     {
         0, 1, 0, -1, 0, -1, 0, 1
     };

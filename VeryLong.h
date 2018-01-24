@@ -318,7 +318,7 @@ public:
 
     friend ostream& operator<< (ostream& os, const VeryLong& vl)
     {
-        static char tmp[10240];
+        static thread_local char tmp[10240];
         mpz_get_str(tmp, 10, vl.vl_);
         os << tmp;
         return os;

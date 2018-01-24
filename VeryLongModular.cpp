@@ -1,7 +1,7 @@
 #include "VeryLongModular.h"
 
-mpz_t VeryLongModular::modulus_;
-int VeryLongModular::staticInitDone = 0;
+thread_local mpz_t VeryLongModular::modulus_;
+thread_local int VeryLongModular::staticInitDone = 0;
 
 VeryLongModular::VeryLongModular()
 {
@@ -89,7 +89,7 @@ int VeryLongModular::is_one() const
 
 int VeryLongModular::operator== (const VeryLong& vl) const
 {
-    static VeryLong tmp;
+    static thread_local VeryLong tmp;
     mpz_mod(tmp.vl_, vl.vl_, modulus_);
     if (vl.is_zero())
     {
@@ -120,7 +120,7 @@ VeryLongModular& VeryLongModular::operator= (const VeryLong& vl)
 
 VeryLongModular operator+ (const VeryLongModular& vl1, const VeryLongModular& vl2)
 {
-    static VeryLongModular vl;
+    static thread_local VeryLongModular vl;
     mpz_add(vl.vl_, vl1.vl_, vl2.vl_);
     mpz_mod(vl.vl_, vl.vl_, VeryLongModular::modulus_);
     return vl;
@@ -128,7 +128,7 @@ VeryLongModular operator+ (const VeryLongModular& vl1, const VeryLongModular& vl
 
 VeryLongModular operator- (const VeryLongModular& vl1, const VeryLongModular& vl2)
 {
-    static VeryLongModular vl;
+    static thread_local VeryLongModular vl;
     mpz_sub(vl.vl_, vl1.vl_, vl2.vl_);
     mpz_mod(vl.vl_, vl.vl_, VeryLongModular::modulus_);
     return vl;
@@ -136,7 +136,7 @@ VeryLongModular operator- (const VeryLongModular& vl1, const VeryLongModular& vl
 
 VeryLongModular operator* (const VeryLongModular& vl1, const VeryLongModular& vl2)
 {
-    static VeryLongModular vl;
+    static thread_local VeryLongModular vl;
     mpz_mul(vl.vl_, vl1.vl_, vl2.vl_);
     mpz_mod(vl.vl_, vl.vl_, VeryLongModular::modulus_);
     return vl;
@@ -148,7 +148,7 @@ VeryLongModular operator/ (const VeryLongModular& vl1, const VeryLongModular& vl
     {
         throw std::string("operator/(VeryLongModular) : divide by zero, quotient undefined");
     }
-    static VeryLongModular vl;
+    static thread_local VeryLongModular vl;
     mpz_invert(vl.vl_, vl2.vl_, VeryLongModular::modulus_);
     mpz_mul(vl.vl_, vl.vl_, vl1.vl_);
     mpz_mod(vl.vl_, vl.vl_, VeryLongModular::modulus_);
@@ -221,7 +221,7 @@ VeryLongModular& VeryLongModular::operator/= (const VeryLongModular& vl)
 
 ostream& operator<< (ostream& os, const VeryLongModular& vl)
 {
-    static char tmp[10240];
+    static thread_local char tmp[10240];
     mpz_get_str(tmp, 10, vl.vl_);
     os << tmp;
 //   os << "(";

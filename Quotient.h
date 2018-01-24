@@ -204,7 +204,7 @@ public:
         if (q1.a == q1.b) return q2;
         if (q2.a == q2.b) return q1;
 
-        static Quotient result;
+        static thread_local Quotient result;
         result = q1;
         result.a *= q2.a;
         result.b *= q2.b;
@@ -263,7 +263,7 @@ public:
         }
         if (b.is_one()) return;
         if (a.is_zero()) return;
-        static I c;
+        static thread_local I c;
         c = ::gcd(a,b);
         if (c.is_one()) return;
         a /= c;

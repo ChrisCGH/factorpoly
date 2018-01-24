@@ -14,8 +14,8 @@ inline unsigned long int myzmulmods(unsigned long int a, unsigned long int b, un
 #endif
 //#define myzmulmods zmulmods
 
-unsigned long int LongModular::modulus_ = 0;
-bool LongModular::staticInitDone = false;
+thread_local unsigned long int LongModular::modulus_ = 0;
+thread_local bool LongModular::staticInitDone = false;
 
 LongModular::LongModular() : _li(0)
 {
