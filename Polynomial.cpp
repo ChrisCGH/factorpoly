@@ -21,8 +21,9 @@
 #include <condition_variable>
 #include <functional>
 #include <sstream>
+#include <sys/sysinfo.h>
 #endif
-//#define DO_CHECKS 1
+#define DO_CHECKS 1
 #if 1
 template <> long int get_long(const VeryLong& i)
 {
@@ -577,7 +578,7 @@ bool process_combination(const Polynomial<VeryLong>& U, const VeryLong l_U, cons
         }
     }
     if (debug) oss << ">>>> " << "V = " << V << std::endl;
-    if (V == unit_poly)
+    if (V.deg() < 0 || V == unit_poly)
     {
         return false;
     }
@@ -615,7 +616,6 @@ class WorkerThread
         void set_debug(bool debug) 
         {
             debug_ = debug;
-            debug_ = false;
         }
         void submit(const T& work)
         {
@@ -749,12 +749,28 @@ struct process_combinations_results
     }
 };
 
+int get_cores_to_use(size_t work_queue_size)
+{
+    // Get the number of cores (i.e. the number of threads)
+    // which we will spread work_queue_size jobs over.
+    // Never use more than half the cores.
+    // Always use at least one core.
+    // work_queue size for each thread = work_queue_size / cores
+    // <=> 
+    // cores = work_queue_size / work_queue size for each thread
+    // Set a minimum size for the work queue size for each thread
+    const int min_thread_work_queue_size(100);
+    int cores_to_use = std::min(static_cast<int>(get_nprocs() / 2), std::max(1, static_cast<int>(work_queue_size / min_thread_work_queue_size)));
+    //std::cout << "get_cores_to_use: " << cores_to_use << std::endl;
+    return cores_to_use;
+}
+
 bool process_combinations(const Polynomial<VeryLong>& U, const VeryLong l_U, const std::vector<Polynomial<VeryLongModular> >& Ufactors_, const VeryLong p_power, int d, int r, std::vector<process_combinations_results>& results, bool debug)
 {
     std::vector<std::vector<int> > combination_set = generate_combinations(r, d);
     bool factorFound = false;
     typedef std::function<void ()> worker_function;
-    WorkerThreadManager<worker_function> manager(5, debug);
+    WorkerThreadManager<worker_function> manager(get_cores_to_use(combination_set.size()), debug);
     std::mutex result_mutex;
     std::vector<process_combinations_results> res;
     auto debug_output_callback = [&result_mutex, debug](const std::string& s) 
@@ -1737,12 +1753,12 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
             // the combinations have been exhausted with no fact found.
             // In the latter case we want to go to step 6:
             if (!factorFound) done5 = 1;
+	    d++;
             // Otherwise we go round again with the reduced U
         } // this loop is exited if done5 = 1
 
         // Step 6.
         if (debug) std::cout << ">>>> Step 6, d = " << d << ", r = " << r << std::endl;
-        d++;
         if (2 * d > r) done = 1;
     }
 
