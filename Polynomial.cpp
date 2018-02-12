@@ -578,7 +578,7 @@ bool process_combination(const Polynomial<VeryLong>& U, const VeryLong l_U, cons
         }
     }
     if (debug) oss << ">>>> " << "V = " << V << std::endl;
-    if (V.deg() < 0 || V == unit_poly)
+    if (V.deg() <= 0 || V == unit_poly)
     {
         return false;
     }
