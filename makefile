@@ -7,6 +7,7 @@ COVERAGE_LIBS =
 COVERAGE =
 COVERAGE_OPT =
 LIBS = -L/usr/lib64 -L/usr/local/lib $(COVERAGE_LIBS) -lgmp -lpthread -ltcmalloc_minimal -static-libstdc++
+#LIBS = -L/usr/lib64 -L/usr/local/lib $(COVERAGE_LIBS) -lgmp -lpthread -static-libstdc++
 INCLUDES = -I/usr/local/include
 OPT = -O3
 #CCFLAGS = -Wall -g $(OPT) $(PROFILE) $(ARCH) -std=c++14 -fno-operator-names -Wno-non-template-friend -Wno-uninitialized -DUSING_GCC -Dlinux

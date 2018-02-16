@@ -229,12 +229,14 @@ void hensel_lift(const VeryLong& p,
                  Polynomial<VeryLong>& A1,
                  Polynomial<VeryLong>& B1)
 {
+    bool debug = false;
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT") && (::atoi(std::getenv("FACTOR_VERBOSE_OUTPUT")) & 4)) debug = true;
     // AB = C mod q
     // AU + BV = 1 mod q
-    //cout << "hensel_lift:" << endl;
-    //cout << "p = " << p << ", q = " << q << endl;
-    //cout << "A = " << A << ", B = " << B << ", C = " << C << endl;
-    //cout << "U = " << U << ", V = " << V << endl;
+    if (debug) std::cout << "***** hensel_lift:" << std::endl;
+    if (debug) std::cout << "***** p = " << p << ", q = " << q << std::endl;
+    if (debug) std::cout << "***** A = " << A << ", B = " << B << ", C = " << C << std::endl;
+    if (debug) std::cout << "***** U = " << U << ", V = " << V << std::endl;
 #ifdef DO_CHECKS
     Polynomial<VeryLong> check3 = C - A * B;
     Polynomial<VeryLongModular> check4 = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(check3, q);
@@ -244,21 +246,21 @@ void hensel_lift(const VeryLong& p,
         std::cout << "check4 = " << check4 << std::endl;
     }
 #endif
-    //cout << "C - AB = " << C - A * B << endl;
+    if (debug) std::cout << "***** C - AB = " << C - A * B << std::endl;
     VeryLong r = gcd<VeryLong>(p, q);
     // Step 1. [Euclidean division]
     Polynomial<VeryLong> f1 = (C - A * B) / q;
-    //cout << "f1 = " << f1 << endl;
+    if (debug) std::cout << "***** f1 = " << f1 << std::endl;
     VeryLongModular::set_default_modulus(r);
     Polynomial<VeryLongModular> f = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(f1, r);
     Polynomial<VeryLongModular> V_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(V, r);
     Polynomial<VeryLongModular> A_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(A, r);
-    //cout << "f = " << f << ", V_ = " << V_ << ", A_ = " << A_ << endl;
+    if (debug) std::cout << "***** f = " << f << ", V_ = " << V_ << ", A_ = " << A_ << std::endl;
     Polynomial<VeryLongModular> t;
     Polynomial<VeryLongModular> R;
     euclidean_division<VeryLongModular>(V_ * f, A_, t, R);
-    //cout << "t = " << t << endl;
-    //cout << "R = " << R << endl;
+    if (debug) std::cout << "***** t = " << t << std::endl;
+    if (debug) std::cout << "***** R = " << R << std::endl;
 
     // check
     if (R.deg() >= A.deg())
@@ -279,13 +281,13 @@ void hensel_lift(const VeryLong& p,
     Polynomial<VeryLongModular> U_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U, r);
     Polynomial<VeryLongModular> B_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(B, r);
     Polynomial<VeryLong> B0 = lift<VeryLong, VeryLongModular>(U_ * f + B_ * t);
-    //cout << "A0 = " << A0 << endl;
-    //cout << "B0 = " << B0 << endl;
+    if (debug) std::cout << "***** A0 = " << A0 << std::endl;
+    if (debug) std::cout << "***** B0 = " << B0 << std::endl;
 
     A1 = A + q * A0;
     B1 = B + q * B0;
-    //cout << "A1 = " << A1 << endl;
-    //cout << "B1 = " << B1 << endl;
+    if (debug) std::cout << "***** A1 = " << A1 << std::endl;
+    if (debug) std::cout << "***** B1 = " << B1 << std::endl;
     // should have C = A1 * B1 mod qr
 #ifdef DO_CHECKS
     Polynomial<VeryLong> check1 = A1 * B1;
@@ -308,7 +310,9 @@ void hensel_lift(const VeryLong& p,
                  std::deque<Polynomial<VeryLong> >& VV,
                  std::deque<Polynomial<VeryLong> >& W)
 {
-    //cout << "generalised hensel lift : " << endl;
+    bool debug = false;
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT") && (::atoi(std::getenv("FACTOR_VERBOSE_OUTPUT")) & 4)) debug = true;
+    if (debug) std::cout << "%%%%% generalised hensel lift : " << std::endl;
     Polynomial<VeryLong> A = VV[0];
     Polynomial<VeryLong> B = VV[1];
 
@@ -319,13 +323,13 @@ void hensel_lift(const VeryLong& p,
     Polynomial<VeryLongModular> Bp_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(B, p);
     Polynomial<VeryLongModular> U_;
     Polynomial<VeryLongModular> V_;
-    //cout << "Ap_ = " << Ap_ << ", Bp_ = " << Bp_ << ", gcd(Ap_,Bp_) = " << gcd(Ap_, Bp_) << endl;
+    if (debug) std::cout << "%%%%% Ap_ = " << Ap_ << ", Bp_ = " << Bp_ << ", gcd(Ap_,Bp_) = " << gcd(Ap_, Bp_) << std::endl;
     Polynomial<VeryLongModular> G = extended_gcd<Polynomial<VeryLongModular> >(Ap_, Bp_, U_, V_);
-    //cout << "G = " << G << ", U_ = " << U_ << ", V_ = " << V_ << endl;
+    if (debug) std::cout << "%%%%% G = " << G << ", U_ = " << U_ << ", V_ = " << V_ << std::endl;
     VeryLongModular g = G.coefficient(0);
     U_ /= g;
     V_ /= g;
-    //cout << "U_ = " << U_ << ", V_ = " << V_ << endl;
+    if (debug) std::cout << "%%%%% U_ = " << U_ << ", V_ = " << V_ << std::endl;
 #ifdef DO_CHECKS
     Polynomial<VeryLongModular> check = U_ * Ap_ + V_ * Bp_;
     const VeryLongModular one(1L);

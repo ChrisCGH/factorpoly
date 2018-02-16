@@ -1830,6 +1830,8 @@ void distinct_degree_factorisation(const Polynomial<MODULAR_INTEGER>& A,
     Polynomial<MODULAR_INTEGER> V = A;
     const MODULAR_INTEGER zero(0L);
     const MODULAR_INTEGER one(1L);
+    bool debug = false;
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT") && (::atoi(std::getenv("FACTOR_VERBOSE_OUTPUT")) & 2)) debug = true;
     std::vector<MODULAR_INTEGER> x;
     x.resize(2);
     x[0] = zero;
@@ -1843,16 +1845,16 @@ void distinct_degree_factorisation(const Polynomial<MODULAR_INTEGER>& A,
     while (1)
     {
         // Step 2. [Finished]
-        //cout << "Step 2 : d = " << d << ", e = " << e << ", V = " << V << ", W = " << W << endl;
+        if (debug) std::cout << "Step 2 : d = " << d << ", e = " << e << ", V = " << V << ", W = " << W << std::endl;
         e = V.deg();
         if (d + 1 > e / 2)
         {
             if (e > 0)
             {
-                //cout << "Finished : d = " << d << ", e = " << e << ", V = " << V << ", W = " << W << endl;
+                if (debug) std::cout << "Finished : d = " << d << ", e = " << e << ", V = " << V << ", W = " << W << std::endl;
                 Ad[e - 1] = V;
                 Ad[e - 1].make_monic();
-                //cout << "Step 2 : Ad[" << e << "] = " << Ad[e - 1] << endl;
+                if (debug) std::cout << "Step 2 : Ad[" << e << "] = " << Ad[e - 1] << std::endl;
                 for (int i = d + 1; i < e; i++)
                 {
                     Ad[i - 1] = Polynomial<MODULAR_INTEGER>(one);
@@ -1865,20 +1867,20 @@ void distinct_degree_factorisation(const Polynomial<MODULAR_INTEGER>& A,
             d++;
             // W = W^p mod V
             W = powmodf_vl(p, W, V);
-            //cout << "W^" << p << " mod (" << V << ") = " << W << endl;
+            if (debug) std::cout << "W^" << p << " mod (" << V << ") = " << W << std::endl;
         }
 
         // Step 3. [Output Ad]
         Ad[d - 1] = gcd(W - X, V);
         Ad[d - 1].make_monic();
 
-        //cout << "Step 3 : d = " << d << ", e = " << e << ", V = " << V << ", W = " << W << endl;
-        //cout << "Step 3 : Ad[" << d << "] = " << Ad[d - 1] << endl;
+        if (debug) std::cout << "Step 3 : d = " << d << ", e = " << e << ", V = " << V << ", W = " << W << std::endl;
+        if (debug) std::cout << "Step 3 : Ad[" << d << "] = " << Ad[d - 1] << std::endl;
         if (Ad[d - 1].deg() != 0 || Ad[d - 1].coefficient(0) != 1L)
         {
             V = V / Ad[d - 1];
             W = W % V;
-            //cout << "new V = " << V << ", new W = " << W << endl;
+            if (debug) std::cout << "new V = " << V << ", new W = " << W << std::endl;
         }
     }
 }
@@ -1887,11 +1889,13 @@ void distinct_degree_factorisation(const Polynomial<MODULAR_INTEGER>& A,
 template <class MODULAR_INTEGER>
 void split2(const Polynomial<MODULAR_INTEGER>& A, int d, std::vector<Polynomial<MODULAR_INTEGER > >& factors)
 {
+    bool debug = false;
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT") && (::atoi(std::getenv("FACTOR_VERBOSE_OUTPUT")) & 2)) debug = true;
     // Step 1. [Initialize]
     int k = A.deg() / d;
     if (k == 1)
     {
-//      cout << "Irreducible factor = " << A << endl;
+        if (debug) std::cout << "----- Irreducible factor = " << A << std::endl;
         factors.push_back(A);
         return;
     }
@@ -2001,6 +2005,8 @@ void factor_over_F_p(const Polynomial<INTEGER>& poly,
                      const INTEGER2& p,
                      std::vector<Polynomial<MODULAR_INTEGER > >& factors)
 {
+    bool debug = false;
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT") && (::atoi(std::getenv("FACTOR_VERBOSE_OUTPUT")) & 2)) debug = true;
     MODULAR_INTEGER::set_default_modulus(p);
     // remember l(poly);
     INTEGER l_poly = poly.coefficient(poly.deg());
@@ -2013,13 +2019,13 @@ void factor_over_F_p(const Polynomial<INTEGER>& poly,
     // (2) The A_i are squarefree and coprime
 
     std::vector<std::pair<int, Polynomial<MODULAR_INTEGER> > > Ai;
-    //cout << "A = " << A << endl;
-    //cout << "p = " << p << endl;
+    if (debug) std::cout << "+++++ A = " << A << std::endl;
+    if (debug) std::cout << "+++++ p = " << p << std::endl;
     squarefree_factorisation(A, p, Ai);
-    //cout << "After squarefree_factorisation() : " << endl;
+    if (debug) std::cout << "+++++ After squarefree_factorisation() : " << std::endl;
     for (size_t i = 0; i < Ai.size(); i++)
     {
-        //cout << "(" << Ai[i].first << ", " << Ai[i].second << ")" << endl;
+        if (debug) std::cout << "+++++ (" << Ai[i].first << ", " << Ai[i].second << ")" << std::endl;
     }
 
     // Step 2. [Distinct degree factorization]
@@ -2030,24 +2036,27 @@ void factor_over_F_p(const Polynomial<INTEGER>& poly,
     {
         distinct_degree_factorisation(Ai[i].second, p, Ad[i]);
         Polynomial<MODULAR_INTEGER> check(one);
-        //cout << "result of distinct_degree_factorisation for i = " << i << endl;
+        if (debug) std::cout << "+++++ result of distinct_degree_factorisation for i = " << i << std::endl;
         for (size_t d = 0; d < Ad[i].size(); d++)
         {
-            //cout << "Ad[" << i << "][" << d << "] = " << Ad[i][d] << endl;
+            if (debug) std::cout << "+++++ Ad[" << i << "][" << d << "] = " << Ad[i][d] << std::endl;
             if (Ad[i][d].deg() >= 0) check *= Ad[i][d];
         }
         check.make_monic();
-        //cout << "check = " << check << endl;
+        if (debug) std::cout << "+++++ check = " << check << std::endl;
     }
 
     // Step 3. [Final Splittings]
+    if (debug) std::cout << "+++++ Final Splittings, Ad.size() = " << Ad.size() << std::endl;
     for (size_t i = 0; i < Ad.size(); i++)
     {
         std::vector<Polynomial<MODULAR_INTEGER > > irreducible_factors;
+        if (debug) std::cout << "+++++ Ad[" << i << "].size() = " << Ad[i].size() << std::endl;
         for (size_t d = 0; d < Ad[i].size(); d++)
         {
             if (Ad[i][d].deg() >= static_cast<int>(d + 1))
             {
+                if (debug) std::cout << "+++++ Calling final_split() for d = " << d << ", i = " << i << std::endl;
                 final_split(Ad[i][d], p, static_cast<int>(d + 1), irreducible_factors);
             }
         }
