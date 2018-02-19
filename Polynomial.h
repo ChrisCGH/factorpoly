@@ -1,6 +1,7 @@
 #ifndef _POLYNOMIAL_H
 #define _POLYNOMIAL_H
 #include <vector>
+#include <set>
 #include <math.h>
 #include <complex>
 #include <algorithm>
@@ -12,6 +13,7 @@ using std::norm;
 #include "pow.h"
 using std::vector;
 #include "Quotient.h"
+#include "Matrix.h"
 #include "crt.h"
 #include "gcd.h"
 #include "mt19937int.h"
@@ -1983,6 +1985,131 @@ void CZ_split(const Polynomial<MODULAR_INTEGER>& A, const INTEGER& p, int d, std
     CZ_split(A/B, p, d, factors);
 }
 
+// Algorithm 3.4.10 (Berlekamp for Small p)
+template <class INTEGER, class MODULAR_INTEGER>
+void berlekamp_for_small_p(const Polynomial<MODULAR_INTEGER>& A, const INTEGER& p, std::vector<Polynomial<MODULAR_INTEGER > >& factors)
+{
+    bool debug = false;
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT") && (::atoi(std::getenv("FACTOR_VERBOSE_OUTPUT")) & 8)) debug = true;
+    if (debug) std::cout << "$$$$$ A = " << A << std::endl;
+    int n = A.deg();
+    if (debug) std::cout << "$$$$$ n = " << n << std::endl;
+    // Step 1. [Compute Q]
+    Matrix<MODULAR_INTEGER> Q(n, n);
+    const MODULAR_INTEGER zero(0L);
+    const MODULAR_INTEGER one(1L);
+    Q(0, 0) = one;
+    for (int i = 1; i < n; i++) Q(i, 0) = zero;
+    std::vector<MODULAR_INTEGER> x;
+    x.resize(2);
+    x[0] = zero;
+    x[1] = one;
+    Polynomial<MODULAR_INTEGER> X(x);
+    // Set X_p = X^p mod A
+    auto X_p = powmodf_vl(p, X, A);
+    if (debug) std::cout << "$$$$$ X_p = " << X_p << std::endl;
+    auto X_pk(X_p);
+    for (int k = 1; k < n; k++)
+    {
+        // set Q(i, k) for i = 0 to n - 1 from coefficients of X_pk
+        if (debug) std::cout << "$$$$$ k = " << k << ", X_pk = " << X_pk << std::endl;
+        int d = X_pk.deg();
+        for (int i = 0; i < n; i++)
+        {
+            Q(i, k) = zero;
+            if (i <= d)
+            {
+                Q(i, k) = X_pk.coefficient(i);
+            }
+        }
+        // next X_pk
+        X_pk = (X_pk * X_p) % A;
+    }
+    if (debug) std::cout << "$$$$$ Q = " << std::endl << Q << std::endl;
+
+    // Step 2. [Compute kernel]
+    Matrix<MODULAR_INTEGER> I(n, one, 0);
+    auto V = kernel(Q - I);
+    if (debug) std::cout << "$$$$$ V = " << std::endl << V << std::endl;
+    int r = V.columns();
+    if (debug) std::cout << "$$$$$ r = " << r << std::endl;
+    std::set<Polynomial<MODULAR_INTEGER> > E;
+    E.insert(A);
+    int k = 1; // cardinality of E
+    int j = 0; // index into columns of V
+
+    while (true)
+    {
+        // Step 3. [Finished?]
+        if (debug) std::cout << "$$$$$ Step 3. [Finished?] : k = " << k << ", r = " << r << std::endl;
+        if (k == r)
+        {
+            for (auto& f : E)
+            {
+                factors.push_back(f);
+            }
+            return;
+        }
+        j++;
+    
+        std::vector<MODULAR_INTEGER> t;
+        for (size_t i = 0; i < V.rows(); i++)
+        {
+            t.push_back(V(i, j));
+        }
+        Polynomial<MODULAR_INTEGER> T(t);
+        if (debug) 
+        {
+            std::cout << "$$$$$ t = (";
+            for (auto& tt : t)
+            {
+                std::cout << tt << ",";
+            }
+            std::cout << std::endl;
+        }
+        if (debug) std::cout << "$$$$$ T = " << T << std::endl;
+    
+        // Step 4. [Split]
+        std::set<Polynomial<MODULAR_INTEGER> > new_E(E);
+        for (auto& B : E)
+        {
+            if (B.deg() > 1)
+            {
+                std::set<Polynomial<MODULAR_INTEGER> > F;
+                INTEGER s_(0L);
+                while (s_ < p)
+                {
+                    MODULAR_INTEGER s(s_);
+                    auto T1(T);
+                    T1.set_coefficient(0, T.coefficient(0) - s);
+                    if (debug) std::cout << "$$$$$ s = " << s << std::endl;
+                    if (debug) std::cout << "$$$$$ T1 = " << T1 << std::endl;
+                    if (debug) std::cout << "$$$$$ B = " << B << std::endl;
+                    auto g = gcd(B, T1);
+                    if (debug) std::cout << "$$$$$ g = " << g << std::endl;
+                    if (g.deg() >=1)
+                    {
+                        F.insert(g);
+                    }
+                    s_ += 1L;
+                }
+                // Set E <- (E \ {B}) U F
+                new_E.erase(B);
+                for (auto g : F)
+                {
+                    new_E.insert(g);
+                }
+                k = k - 1 + F.size();
+            }
+            if (k == r)
+            {
+                break;
+            }
+        }
+        E = new_E;
+    }
+}
+
 template <class INTEGER, class MODULAR_INTEGER>
 void final_split(const Polynomial<MODULAR_INTEGER>& A,
                  const INTEGER& p,
@@ -2028,6 +2155,26 @@ void factor_over_F_p(const Polynomial<INTEGER>& poly,
         if (debug) std::cout << "+++++ (" << Ai[i].first << ", " << Ai[i].second << ")" << std::endl;
     }
 
+#define USE_BERLEKAMP 1
+#ifdef USE_BERLEKAMP
+    std::vector<std::vector<Polynomial<MODULAR_INTEGER> > > Ad;
+    Ad.resize(Ai.size());
+    for (size_t i = 0; i < Ai.size(); i++)
+    {
+        berlekamp_for_small_p(Ai[i].second, p, Ad[i]);
+    }
+    for (size_t i = 0; i < Ad.size(); i++)
+    {
+        int multiplicity = Ai[i].first;
+        for (int j = 0; j < multiplicity; j++)
+        {
+            for (size_t k = 0; k < Ad[i].size(); k++)
+            {
+                factors.push_back(Ad[i][k]);
+            }
+        }
+    }
+#else
     // Step 2. [Distinct degree factorization]
     const MODULAR_INTEGER one(1L);
     std::vector<std::vector<Polynomial<MODULAR_INTEGER> > > Ad;
@@ -2069,6 +2216,7 @@ void factor_over_F_p(const Polynomial<INTEGER>& poly,
             }
         }
     }
+#endif
 
     // Step 4. [Cleanup]
     // Group together all the identical factors found, order them by degree,

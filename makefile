@@ -37,7 +37,7 @@ ALL_PROGRAMS : factorpoly
 
 all : $(ALL_PROGRAMS)
 
-ALL_HEADERS = crt.h gcd.h legendre.h lip.h lippar.h LongModular.h mod.h MPFloat.h mt19937int.h Polynomial.h pow.h Quotient.h VeryLong.h VeryLongModular.h Combinations.h
+ALL_HEADERS = crt.h gcd.h legendre.h lip.h lippar.h LongModular.h mod.h MPFloat.h mt19937int.h Polynomial.h pow.h Quotient.h VeryLong.h VeryLongModular.h Combinations.h Matrix.h
 ALL_CPPS = factorpoly.cpp LongModular.cpp Polynomial.cpp VeryLong.cpp VeryLongModular.cpp
 
 ALL_CS = lip.c mt19937int.c 
