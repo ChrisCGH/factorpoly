@@ -2030,6 +2030,13 @@ void berlekamp_for_small_p(const Polynomial<MODULAR_INTEGER>& A, const INTEGER& 
     // Step 2. [Compute kernel]
     Matrix<MODULAR_INTEGER> I(n, one, 0);
     auto V = kernel(Q - I);
+    // check
+    auto check1 = Q * V;
+    if (check1 != V)
+    {
+        std::cout << "$$$$$ Problem: V is not kernel of Q - I" << std::endl;
+        std::cout << "$$$$$ check1 = " << std::endl << check1 << std::endl;
+    }
     if (debug) std::cout << "$$$$$ V = " << std::endl << V << std::endl;
     int r = V.columns();
     if (debug) std::cout << "$$$$$ r = " << r << std::endl;
@@ -2089,6 +2096,24 @@ void berlekamp_for_small_p(const Polynomial<MODULAR_INTEGER>& A, const INTEGER& 
                     if (debug) std::cout << "$$$$$ g = " << g << std::endl;
                     if (g.deg() >=1)
                     {
+                        // check that g divides A, B and T1:
+                        auto check0 = A % g;
+                        if (check0.deg() >= 0)
+                        {
+                            std::cout << "$$$$$ Problem: check0 = " << check0 << std::endl;
+                        }
+                        auto check1 = B % g;
+                        if (check1.deg() >= 0)
+                        {
+                            std::cout << "$$$$$ Problem: check1 = " << check1 << std::endl;
+                        }
+                        auto check2 = T1 % g;
+                        if (check2.deg() >= 0)
+                        {
+                            std::cout << "$$$$$ Problem: check2 = " << check2 << std::endl;
+                        }
+                        // Normalise g
+                        g.make_monic();
                         F.insert(g);
                     }
                     s_ += 1L;

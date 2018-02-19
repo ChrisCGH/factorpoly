@@ -1599,6 +1599,8 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
             if (check != Up)
             {
                 std::cout << "Problem: check = " << check << ", Up = " << Up << std::endl;
+                std::cout << "         gcd(check, Up) = " << gcd(check, Up) << std::endl;
+                std::cout << "         check / Up = " << check / Up << std::endl;
             }
 #endif
             done = 1;
