@@ -1759,7 +1759,7 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
             // the combinations have been exhausted with no fact found.
             // In the latter case we want to go to step 6:
             if (!factorFound) done5 = 1;
-	    d++;
+            d++;
             // Otherwise we go round again with the reduced U
         } // this loop is exited if done5 = 1
 
