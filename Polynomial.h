@@ -635,6 +635,10 @@ public:
 
     F coefficient(int i) const
     {
+        if (i == -1 && deg() == -1)
+        {
+            return F(0L);
+        }
         if (i < 0)
         {
             throw std::string("Polynomial::coefficient() : index out of range");
@@ -643,6 +647,12 @@ public:
         {
             return F(0L);
         }
+#if 0
+        if (i == 0 && deg() == 0)
+        {
+            return F(0L);
+        }
+#endif
         return _coefficients[i];
     }
 
@@ -837,6 +847,7 @@ public:
         return dpoly;
     }
     static void factor(const Polynomial<F>& AA, std::vector<Polynomial<F> >& factors, F& cont);
+    static void factor_LLL(const Polynomial<F>& AA, std::vector<Polynomial<F> >& factors, F& cont);
 private:
     static bool parse_number(const char*& c)
     {

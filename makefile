@@ -37,14 +37,14 @@ ALL_PROGRAMS : factorpoly
 
 all : $(ALL_PROGRAMS)
 
-ALL_HEADERS = crt.h gcd.h legendre.h lip.h lippar.h LongModular.h mod.h MPFloat.h mt19937int.h Polynomial.h pow.h Quotient.h VeryLong.h VeryLongModular.h Combinations.h Matrix.h
-ALL_CPPS = factorpoly.cpp LongModular.cpp Polynomial.cpp VeryLong.cpp VeryLongModular.cpp
+ALL_HEADERS = crt.h discriminant.h gcd.h legendre.h lip.h lippar.h LongModular.h mod.h MPFloat.h mt19937int.h Polynomial.h pow.h Quotient.h VeryLong.h VeryLongModular.h Combinations.h Matrix.h lll.h timings.h
+ALL_CPPS = factorpoly.cpp discriminant.cpp LongModular.cpp Polynomial.cpp VeryLong.cpp VeryLongModular.cpp lll.cpp timings.cpp
 
 ALL_CS = lip.c mt19937int.c 
 ALL_SRCS = $(ALL_CPPS) $(ALL_CS) $(ALL_HEADERS)
 ALL_OBJS = $(ALL_CPPS:.cpp=$(OBJEXT)) $(C_SRCS:.c=$(OBJEXT))
 
-FACTOR_POLYNO_CPP_SRCS = factorpoly.cpp Polynomial.cpp VeryLong.cpp VeryLongModular.cpp LongModular.cpp
+FACTOR_POLYNO_CPP_SRCS = factorpoly.cpp Polynomial.cpp VeryLong.cpp VeryLongModular.cpp LongModular.cpp discriminant.cpp lll.cpp timings.cpp
 C_SRCS = mt19937int.c lip.c
 
 include $(FACTOR_POLYNO_CPP_SRCS:.cpp=.d)

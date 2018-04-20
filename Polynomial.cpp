@@ -3,7 +3,10 @@
 #include "LongModular.h"
 #include "VeryLongModular.h"
 #include "Polynomial.inl"
+#include "discriminant.h"
 #include "Combinations.h"
+#include "lll.h"
+#include "timings.h"
 #include <algorithm>
 #include <deque>
 #include <set>
@@ -304,6 +307,157 @@ void hensel_lift(const VeryLong& p,
 #endif
 }
 
+//Algorithm 3.5.6 (Quadratic Hensel Lift)
+void quadratic_hensel_lift(const VeryLong& p,
+                           const Polynomial<VeryLong>& A1,
+                           const Polynomial<VeryLong>& B1,
+                           const Polynomial<VeryLong>& U,
+                           const Polynomial<VeryLong>& V,
+                           Polynomial<VeryLong>& U1,
+                           Polynomial<VeryLong>& V1)
+{
+    bool debug = false;
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT") && (::atoi(std::getenv("FACTOR_VERBOSE_OUTPUT")) & 4)) debug = true;
+    // Step 1. [Euclidean division]
+    VeryLong r(p);
+    Polynomial<VeryLong> polyone(VeryLong(1L));
+    Polynomial<VeryLong> gg = (polyone - U * A1 - V * B1) / p;
+    VeryLongModular::set_default_modulus(r);
+    Polynomial<VeryLongModular> g = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(gg, r);
+
+    if (debug) std::cout << "***** quadratic_hensel_lift" << std::endl;
+    if (debug) std::cout << "***** g = " << g << std::endl;
+
+    Polynomial<VeryLongModular> V_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(V, r);
+    Polynomial<VeryLongModular> A1_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(A1, r);
+    Polynomial<VeryLongModular> t;
+    Polynomial<VeryLongModular> R;
+    euclidean_division<VeryLongModular>(V_ * g, A1_, t, R);
+    if (debug) std::cout << "***** t = " << t << std::endl;
+    if (debug) std::cout << "***** R = " << R << std::endl;
+
+    // check
+    if (R.deg() >= A1.deg())
+    {
+        std::cout << "Problem: euclidean_division of " << V_ * g << " and " << A1_ << std::endl;
+        std::cout << "gave t = " << t << ", R = " << R << std::endl;
+    }
+#ifdef DO_CHECKS
+    Polynomial<VeryLongModular> check = V_ * g - A1_ * t;
+    if (check != R)
+    {
+        std::cout << "Problem: check != R, check = " << check << ", R = " << R << std::endl;
+    }
+#endif
+
+    // Step 2. [Terminate]
+    // lift(U * g + B1 * t)
+    Polynomial<VeryLongModular> U_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U, r);
+    Polynomial<VeryLongModular> B1_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(B1, r);
+    Polynomial<VeryLong> U0 = lift<VeryLong, VeryLongModular>(U_ * g + B1_ * t);
+    Polynomial<VeryLong> V0 = lift<VeryLong, VeryLongModular>(V_ * g - A1_ * t);
+
+    U1 = U + p * U0;
+    V1 = V + p * V0;
+}
+
+/*
+ * Given polynomials f, A and B in Z[X] with 
+ *
+ *    f = A * B mod p
+ *
+ * return polynomials A1 and B1 in Z[X] with
+ *
+ *
+ *    f = A * B mod p
+ * 
+ * using a combination of hensel_lift and quadratic_hensel_lift
+ *
+ */
+void multiple_hensel_lift(const VeryLong& p, 
+                          long int e,
+                          const Polynomial<VeryLong>& f,
+                          const Polynomial<VeryLong>& AA,
+                          const Polynomial<VeryLong>& BB,
+                          Polynomial<VeryLong>& A1,
+                          Polynomial<VeryLong>& B1)
+{
+    bool debug = false;
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT") && (::atoi(std::getenv("FACTOR_VERBOSE_OUTPUT")) & 4)) debug = true;
+
+    Polynomial<VeryLong> A(AA);
+    Polynomial<VeryLong> B(BB);
+
+    VeryLongModular::set_default_modulus(p);
+    Polynomial<VeryLongModular> Ap_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(A, p);
+    Polynomial<VeryLongModular> Bp_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(B, p);
+    Polynomial<VeryLongModular> U_;
+    Polynomial<VeryLongModular> V_;
+    if (debug) std::cout << "%%%%% Ap_ = " << Ap_ << ", Bp_ = " << Bp_ << ", gcd(Ap_,Bp_) = " << gcd(Ap_, Bp_) << std::endl;
+    Polynomial<VeryLongModular> G = extended_gcd<Polynomial<VeryLongModular> >(Ap_, Bp_, U_, V_);
+    if (debug) std::cout << "%%%%% G = " << G << ", U_ = " << U_ << ", V_ = " << V_ << std::endl;
+    VeryLongModular g = G.coefficient(0);
+    U_ /= g;
+    V_ /= g;
+    if (debug) std::cout << "%%%%% U_ = " << U_ << ", V_ = " << V_ << std::endl;
+#ifdef DO_CHECKS
+    Polynomial<VeryLongModular> check = U_ * Ap_ + V_ * Bp_;
+    const VeryLongModular one(1L);
+    if (check != Polynomial<VeryLongModular>(one))
+    {
+        std::cout << "Problem U_ Ap_ + V_ Bp_ != 1, check = " << check << std::endl;
+        std::cout << "Ap_ = " << Ap_ << ", Bp_ = " << Bp_ << ", gcd(Ap_,Bp_) = " << gcd(Ap_, Bp_) << std::endl;
+        std::cout << "U_ = " << U_ << ", V_ = " << V_ << std::endl;
+    }
+#endif
+    Polynomial<VeryLong> U = lift<VeryLong, VeryLongModular>(U_);
+    Polynomial<VeryLong> V = lift<VeryLong, VeryLongModular>(V_);
+
+    VeryLong p_power(p);
+    long int u(1L);
+    long int v(0L);
+
+    while (u <= e / 2L)
+    {
+        hensel_lift(p_power, p_power, A, B, f, U, V, A1, B1);
+        Polynomial<VeryLong> U1;
+        Polynomial<VeryLong> V1;
+        quadratic_hensel_lift(p_power, A1, B1, U, V, U1, V1);
+        U = U1;
+        V = V1;
+        A = A1;
+        B = B1;
+        u *= 2L;
+        v++;
+        p_power *= p_power;
+    }
+
+    /*
+     * Here A1 * B1 = f mod p_power where
+     *
+     *                u 
+     *     p_power = p
+     *
+     *          v
+     *     u = 2   
+     *
+     * and u <= e
+     *
+     *                                       e
+     * Now need to hensel_lift to p_power = p 
+     *
+     */
+
+    VeryLong p_power_deficit = pow<VeryLong, int>(p, e) / p_power;
+    if (debug) std::cout << "%%%%% p_power = " << p_power << std::endl;
+    if (debug) std::cout << "%%%%% p_power_deficit = " << p_power_deficit << std::endl;
+    if (p_power_deficit> VeryLong(1L))
+    {
+        if (debug) std::cout << "%%%%% calling final hensel_lift" << std::endl;
+        hensel_lift(p_power_deficit, p_power, A, B, f, U, V, A1, B1);
+    }
+}
+                    
 void hensel_lift(const VeryLong& p,
                  const VeryLong& q,
                  const Polynomial<VeryLong>& C,
@@ -345,11 +499,17 @@ void hensel_lift(const VeryLong& p,
     Polynomial<VeryLong> A1;
     Polynomial<VeryLong> B1;
 
+    if (debug) std::cout << "%%%%% Calling hensel_lift(), p = " << p << ", q = " << q << std::endl;
     hensel_lift(p, q, A, B, C, U, V, A1, B1);
+    //Polynomial<VeryLong> U1;
+    //Polynomial<VeryLong> V1;
+    //quadratic_hensel_lift(p, q, A1, B1, U, V, U1, V1)
+
     W.push_back(A1);
     VV.pop_front();
     if (VV.size() > 1)
     {
+        if (debug) std::cout << "%%%%% Calling hensel_lift(), p = " << p << ", q = " << q << ", B1 = " << B1 << std::endl;
         hensel_lift(p, q, B1, VV, W);
     }
     else
@@ -791,6 +951,35 @@ bool process_combinations(const Polynomial<VeryLong>& U, const VeryLong l_U, con
             res.push_back(pcr);
             factorFound = true;
         };
+#define LIMIT_SUBMISSIONS 1
+#ifdef LIMIT_SUBMISSIONS
+    const size_t MAX_SUBMITTED = 100L;
+    size_t comb = 0;
+    while (comb < combination_set.size())
+    {
+        size_t submitted = 0;
+        while (submitted < MAX_SUBMITTED && comb < combination_set.size())
+        {
+            const auto& f = [U, l_U, p_power, Ufactors_, &combination = combination_set[comb], d, r, &factor_found_callback, &debug_output_callback, debug]() 
+                     {
+                         Polynomial<VeryLong> V_;
+                         std::string debug_output;
+                         if (process_combination(U, l_U, p_power, Ufactors_, combination, d, r, V_, debug, debug_output))
+                         { 
+                             // result is (combination, V_)
+                             factor_found_callback(combination, V_);
+                         }
+                         debug_output_callback(debug_output);
+                         return;
+                     };
+            manager.submit(f);
+            submitted++;
+            comb++;
+        }
+        manager.run();
+        manager.wait();
+    }
+#else
     for (size_t comb = 0; comb < combination_set.size(); comb++)
     {
         const auto& f = [U, l_U, p_power, Ufactors_, &combination = combination_set[comb], d, r, &factor_found_callback, &debug_output_callback, debug]() 
@@ -809,6 +998,7 @@ bool process_combinations(const Polynomial<VeryLong>& U, const VeryLong l_U, con
     }
     manager.run();
     manager.wait();
+#endif
     if (factorFound)
     {
         for (auto& pcr: res)
@@ -1717,6 +1907,7 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
             if (factorFound)
             {
                 std::sort(results.begin(), results.end());
+                std::vector<int> factors_to_remove;
                 for (auto& pcr: results)
                 {
                     Polynomial<VeryLong> V = pcr.factor;
@@ -1731,29 +1922,37 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
                         int v = exponent(A, F);
                         for (int k = 0; k < v; k++) factors.push_back(F);
                         l_U = U.coefficient(U.deg());
-                        // remove Ui from Ufactors_
-                        std::vector<Polynomial<VeryLongModular> > newUf_;
-                        if (2 * d <= r)
+                        for (auto& i: V_combination)
                         {
-                            for (int k = 0; k < r; k++)
-                            {
-                                int j = 0;
-                                for (j = 0; j < d && V_combination[j] - 1 != k; j++);
-                                if (j >= d) newUf_.push_back(Ufactors_[k]);
-                            }
+                            factors_to_remove.push_back(i);
                         }
-                        else
-                        {
-                            for (int j = 0; j < d; j++)
-                            {
-                                newUf_.push_back(Ufactors_[V_combination[j] - 1]);
-                            }
-                        }
-                        Ufactors_ = newUf_;
-                        r = static_cast<int>(Ufactors_.size());
-                        if (2 * d > r) done5 = 1;
                     }
                 }
+                // remove factors from Ufactors_
+                for (auto& factor_to_remove: factors_to_remove)
+                {
+                    if (debug) std::cout << ">>>> Removing U(" << factor_to_remove << ") = " << Ufactors[factor_to_remove - 1] << std::endl;
+                }
+                std::vector<Polynomial<VeryLongModular> > newUf_;
+                if (2 * d <= r)
+                {
+                    for (int k = 0; k < r; k++)
+                    {
+                        size_t j = 0;
+                        for (j = 0; j < factors_to_remove.size() && factors_to_remove[j] - 1 != k; j++);
+                        if (j >= factors_to_remove.size()) newUf_.push_back(Ufactors_[k]);
+                    }
+                }
+                else
+                {
+                    for (size_t j = 0; j < factors_to_remove.size(); j++)
+                    {
+                        newUf_.push_back(Ufactors_[factors_to_remove[j] - 1]);
+                    }
+                }
+                Ufactors_ = newUf_;
+                r = static_cast<int>(Ufactors_.size());
+                if (2 * d > r) done5 = 1;
             }
             // We are here if we've found a factor among the combinations, or if
             // the combinations have been exhausted with no fact found.
@@ -1780,3 +1979,444 @@ template <> void Polynomial<VeryLong>::factor(const Polynomial<VeryLong>& AA, st
     }
 }
 #endif
+// Algorithm described in Lensta, Lenstra and Lovasz, "Factoring Polynomials with Rational Coefficients", Math. Ann. 261, 515-534
+Timing* LLL_timing = 0;
+
+double length(const Polynomial<VeryLong>& f)
+{
+    double len = 0.0;
+    auto ff = Polynomial<VeryLong>::convert_to_double<double>(f);
+    for (auto i = 0; i <= ff.deg(); ++i)
+    {
+        len += ff.coefficient(i) * ff.coefficient(i);
+    }
+    len = ::sqrt(len);
+    return len;
+}
+
+VeryLong length_vl(const Polynomial<VeryLong>& f)
+{
+    VeryLong len(0L);
+    for (auto i = 0; i <= f.deg(); ++i)
+    {
+        len += f.coefficient(i) * f.coefficient(i);
+    }
+    len = len.nth_root(2);
+    return len;
+}
+
+VeryLong n_choose_k(long int n, long int k)
+{
+    if (k > n) return VeryLong(0L);
+    if (k * 2L > n) k = n - k;
+    if (k == VeryLong(0L)) return VeryLong(1L);
+
+    VeryLong result(n);
+    for (int i = 2; i <= k; ++i)
+    {
+        result *= (n - i + 1L);
+        result /= i;
+    }
+    return result;
+}
+
+/*
+ * Algorithm from Section (3.1)
+ */
+bool find_h0_LLL(const Polynomial<VeryLong>& f, 
+                 const VeryLong& p, 
+                 long int k, 
+                 const VeryLong& p_power, 
+                 const Polynomial<VeryLong>& h, 
+                 long int m, 
+                 Polynomial<VeryLong>& h0)
+{
+    bool debug = false;
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT") && (::atoi(std::getenv("FACTOR_VERBOSE_OUTPUT")) & 32)) debug = true;
+    if (debug) std::cout << "===== In find_h0_LLL() : f = " << f << ", p = " << p << ", k = " << k << ", p_power = " << p_power << ", h = " << h << ", m = " << m << std::endl;
+    bool timing(false);
+    if (std::getenv("FACTOR_LLL_TIMINGS")) timing = true;
+    if (timing) LLL_timing->start("find_h0_LLL");
+    /*
+     * (3.1) Suppose that, in addition to f and n, a prime number p, a positive integer k and a polynomial h in Z[X] are given
+     * satisfying (2.1), (2.2), (2.3), and (2.4). Assume that the coefficients of h are reduced modulo p^k, so
+     *
+     *                    2          2k
+     *                 |h|  <= 1 + lp   ,
+     *
+     * where l = deg(h). Let further an integer m >= 1 be given, and assume that inequality (2.14) is satisfied:
+     *
+     *                                     n/2
+     *                  kl    mn/2   / 2m \         m+n 
+     *                 p   > 2     . |    |    . |f|     .
+     *                               \  m /
+     *
+     * We descibe an algorithm that decides whether deg(h0) <= m, with h0 as in (2.5), and determines h0 if indeed deg(h0) <= m.
+     */
+
+    /*
+     * Let L be the lattice defined in (2.6), with basis
+     *
+     *        k i                     j
+     *     { p X  : 0 <= i < l} U { hX  : 0 <= j <= m-l } .
+     */
+
+    long int n = f.deg();
+    long int l = h.deg();
+    long int max_degree = 0L;
+    std::vector<Polynomial<VeryLong> > L_basis;
+    for (long int i = 0; i < l; ++i)
+    {
+        std::vector<VeryLong> c(i + 1);
+        for (long int j = 0; j < i; ++j)
+        {
+            c[j] = VeryLong(0L);
+        }
+        c[i] = p_power;
+        Polynomial<VeryLong> p(c);
+        if (p.deg() > max_degree) max_degree = p.deg();
+
+        L_basis.push_back(p);
+    }
+    for (long int i = 0; i <= m - l; ++i)
+    {
+        std::vector<VeryLong> c(i + 1);
+        for (long int j = 0; j < i; ++j)
+        {
+            c[j] = VeryLong(0L);
+        }
+        c[i] = VeryLong(1L);
+        Polynomial<VeryLong> p(c);
+        p *= h;
+        if (p.deg() > max_degree) max_degree = p.deg();
+        L_basis.push_back(p);
+    }
+    // Build the corresponding Gram matrix, where each column in the matrix corresponds to one of the basis vectors
+    // This matrix will have m + 1 columns and the number of rows will be the maximum degree of any of the polynomials in the basis + 1
+    Matrix<VeryLong> b(max_degree + 1, m + 1);
+    for (long int row = 0; row < max_degree + 1; ++row)
+    {
+        for (long int col = 0; col < m + 1; ++col)
+        {
+            b(row, col) = L_basis[col].coefficient(row);
+        }
+    }
+    if (debug) std::cout << "===== b = " << std::endl << b << std::endl;
+
+    /* Applying algorithm (1.15) we find a reduced basis b ,b ,...,b    for L.
+     *                                                    1  2      m+1
+     */
+    if (timing) LLL_timing->start("LLL_reduce_3_on_columns");
+    LLL_reduce_3_on_columns(b);
+    if (timing) LLL_timing->stop();
+    if (debug) std::cout << "===== After LLL reduction: b = " << std::endl << b << std::endl;
+
+    /*
+     * 
+     *              kl     m 1/n
+     * If |b | >= (p  / |f| )    then by (2.13) we have deg(h0) > m, and the algorithm stops.
+     *      1
+     *
+     */
+
+    VeryLong xxx = pow<VeryLong, long int>(p_power, l);
+    VeryLong yy = pow<VeryLong, long int>(length_vl(f), m);
+    auto zz = xxx/yy;
+    VeryLong limit = zz.nth_root(n);
+    //double limit = std::pow(static_cast<double>(pow<VeryLong, long int>(p_power, l) / std::pow<double, long int>(length(f), m)), 1.0 / n);
+    if (debug) std::cout << "===== xxx = " << xxx << ", yy = " << yy << ", zz = " << zz << ", limit = " << limit << std::endl;
+    // b1 is column 0 of b
+    std::vector<VeryLong> c(b.rows());
+    for (size_t i = 0; i < b.rows(); ++i)
+    {
+        c[i] = b(i, 0);
+    }
+    Polynomial<VeryLong> b1(c);
+    if (debug) std::cout << "===== length_vl(b1) = " << length_vl(b1) << std::endl;
+    if (length_vl(b1) >= limit)
+    {
+        if (timing) LLL_timing->stop();
+        return false;
+    }
+
+    /*
+     *
+     *             kl     m 1/n
+     * if |b | < (p  / |f| )    then by (2.13) and (2.16) we have deg(h0) <= m and
+     *      1
+     *
+     *         h0 = gcd(b ,b ,...b )
+     *                   1  2     t
+     *
+     * with t as in (2.16). This gcd can be calculated by repeated application of the subresultant algorithm.
+     */
+    std::vector<Polynomial<VeryLong> > bb;
+    bb.push_back(b1);
+    for (size_t col = 1; col < b.columns(); ++col)
+    {
+        std::vector<VeryLong> c(b.rows());
+        for (size_t i = 0; i < b.rows(); ++i)
+        {
+            c[i] = b(i, col);
+        }
+        Polynomial<VeryLong> bi(c);
+        if (length(bi) < limit)
+        {
+            bb.push_back(bi);
+        }
+    }
+    size_t t = bb.size();
+    if (debug) std::cout << "===== t = " << t << std::endl;
+    h0 = bb[0];
+    if (debug) std::cout << "===== h0 = " << h0 << std::endl;
+    for (size_t i = 0; i < t; ++i)
+    {
+        if (debug) std::cout << "===== About to call sub_resultant_GCD of h0 = " << h0 << " and bb[" << i << "] = " << bb[i] << std::endl;
+        h0 = sub_resultant_GCD(h0, bb[i]);
+        if (debug) std::cout << "===== h0 = " << h0 << std::endl;
+    }
+    if (timing) LLL_timing->stop();
+    return true;
+}
+
+Polynomial<VeryLong> find_irreducible_factor_LLL(const Polynomial<VeryLong>& f, const VeryLong& p, const Polynomial<VeryLong>& h, const Polynomial<VeryLong>& rest)
+{
+    bool debug = false;
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT") && (::atoi(std::getenv("FACTOR_VERBOSE_OUTPUT")) & 32)) debug = true;
+    /*
+     * From algorithm described in Section (3.3)
+     *
+     *    f - a polynomial in Z[X]
+     *    n - the degree of f
+     *    p - a prime number
+     *    h - a polynomial in Z[X] satisfying the following conditions:
+     *        (2.1) h has leading coefficient 1,
+     *        (2.2) (h mod p) divides (f mod p) in (Z/pZ)[X]
+     *        (2.3) (h mod p) is irreducible in F [X]
+     *                                           p
+     *                       2
+     *        (2.4) (h mod p)  does not divide (f mod p) in F [X]
+     *        and the coefficients of h are reduced modulo p                                                     p
+     *
+     * We describe an algorithm that determines h0, the irreducible factor of f
+     * for which (h mod p) divides (h0 mod p), as given by 
+     * (2.5) Proposition. The polynomial f has an irreducible factor h0 in Z[X] for which (h mod p) divides
+     * (h0 mod p), and this factor is uniquely determined up to sign.
+     */
+    int n = f.deg();
+    int l = h.deg();
+    Polynomial<VeryLong> h0;
+    if (l == n) 
+    {
+        return f;
+    }
+
+    /*
+     * Let now l < n. We first calculate the least positive integer k for which (2.14) holds with m replaced by n-1:
+     *
+     *                              n/2
+     *  kl    (n-1)n/2    / 2(n-1) \         2n-1
+     * p   > 2          . |        |    . |f|
+     *                    \  (n-1) /
+     */
+
+    if (debug) std::cout << ">>>> n = " << n 
+                         << ", n(n-1)/2 = " << (n * (n - 1))/2 
+                         << ", n_choose_k(2(n-1), (n-1)) = " << n_choose_k(static_cast<long int>(2*(n - 1)), static_cast<long int>(n - 1)) 
+                         << ", n_choose_k(2(n-1), (n-1))^(n/2) = " << std::pow<double, int>(static_cast<double>(n_choose_k(static_cast<long int>(2*(n - 1)), static_cast<long int>(n - 1))), n/2) 
+                         << ", |f| = " << length(f) 
+                         << ", |f|^(2n - 1) = " << pow<VeryLong, int>(length_vl(f), 2*n - 1) 
+                         << std::endl;
+    const VeryLong two(2L);
+    VeryLong limit = pow<VeryLong, int>(two, (n*(n - 1))/2) * 
+                     pow<VeryLong, int>(static_cast<VeryLong>(n_choose_k(static_cast<long int>(2*(n - 1)), static_cast<long int>(n - 1))), n/2) * 
+                     pow<VeryLong, int>(static_cast<VeryLong>(length_vl(f)), 2*n - 1);
+    if (debug) std::cout << ">>>> limit = " << limit << std::endl;
+    int k = 1;
+    VeryLong p_l = pow<VeryLong, int>(p, l);
+    VeryLong p_kl = p_l;
+    while (p_kl <= limit)
+    {
+        p_kl *= p_l;
+        k++;
+    }
+    if (debug) std::cout << ">>>> k = " << k << std::endl;
+    /*
+     * Next we modify h, without changing (h mod p), in such a way that (2.2) holds for the value of k just calculated, 
+     * in addition to (2.1), (2.3), and (2.4). This can be accomplished by the use of Hensel's lemma. We may assume
+     * that the coefficients of h are reduced modulo p^k.
+     */
+    VeryLong p_power = pow<VeryLong, int>(p, k);
+    Polynomial<VeryLong> h1;
+    Polynomial<VeryLong> rest1;
+    multiple_hensel_lift(p, k, f, h, rest, h1, rest1);
+    if (debug) std::cout << ">>>> " << "factor of " << f << " mod " << p << "^" << k << " = " << p_power << ", is: " << h1 << std::endl;
+
+    /*
+     * Let u be the greatest integer for which l <= (n-1)/2^u. We perform algorithm (3.1) for each of the values
+     * m = [(n-1)/2^u], [(n-1)/2^(u-1)], ..., [(n-1)/2], n-1 in succession with [x] denoting the greatest integer <= x; but we
+     * stop as as soon as for one of these values of m algorithm (3.1) succeeds in determining h0. If this does not occur for
+     * any m in the sequence then deg(h0) > n-1, so h = f and we stop. This finishes the description of algorithm (3.3).
+     */
+    long int u = 0L;
+    double x(n - 1);
+    while (static_cast<double>(l) <= x)
+    {
+        ++u;
+        x /= 2.0;
+    }
+    --u;
+    if (debug) std::cout << ">>>> " << "u = " << u << std::endl;
+    vector<long int> mm;
+    double m = n - 1;
+    for (int i = 0; i <= u; ++i)
+    {
+        mm.push_back(static_cast<long int>(m));
+        m /= 2.0;
+    }
+    for (auto it = mm.rbegin(); it != mm.rend(); ++it)
+    {
+        Polynomial<VeryLong> h0;
+        if (debug) std::cout << ">>>> " << "calling find_h0_LLL() : f = " << f << ", p = " << p << ", k = " << k << ", p_power = " << p_power << ", h1 = " << h1 << ", m = " << *it << std::endl;
+        if (find_h0_LLL(f, p, k, p_power, h1, static_cast<long int>(*it), h0))
+        {
+            if (debug) std::cout << ">>>> Found h0 = " << h0 << std::endl;
+            return h0;
+        }
+    }
+    return f;
+}
+
+template <> void Polynomial<VeryLong>::factor_LLL(const Polynomial<VeryLong>& AA, std::vector<Polynomial<VeryLong> >& factors, VeryLong& cont)
+{
+    const VeryLong zero(0L);
+    const VeryLong two(2L);
+    bool debug(false);
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT")) debug = true;
+    bool timing(false);
+    if (std::getenv("FACTOR_LLL_TIMINGS")) timing = true;
+    if (timing)
+    {
+        LLL_timing = new Timing("factor_LLL.tim", false);
+    }
+    if (debug) std::cout << ">>>> " << "In Polynomial<VeryLong>::factor_LLL()" << std::endl;
+    /*
+     * Pseudo-code based on Section (3.5):
+     * (3.5) We now describe an algorithm that factors a given primitive polynomial f in Z[X] of degree n > 0 into irreducible factos in Z[X].
+     *    The first step is to calculate the resultant R(f,f') of f and its derivative f', using the subresultant algorithm.
+     */
+
+    Polynomial<VeryLong> A = AA;
+    cont = A.content();
+    A = A / cont;
+    if (A.coefficient(A.deg()) < zero && cont > zero) cont = -cont;
+    if (debug) std::cout << ">>>> " <<  "A = " << A << std::endl;
+    Polynomial<VeryLong> A1 = A.derivative();
+    if (debug) std::cout << ">>>> " << "A' = " << A1 << std::endl;
+
+    auto g = sub_resultant_GCD(A, A1);
+    if (debug) std::cout << ">>>> g = " << g << std::endl;
+    auto U = A / g;
+    auto l_U = U.coefficient(U.deg());
+    
+    if (g.deg() == 0)
+    {
+        /*
+         * In the second step we determine the smallest prime number p not dividing R(f,f'), and we decompose (f mod p) into irreducible factors in Fp[X] by means of Berlekamp's algorithm.
+         */
+        VeryLong::generate_prime_table();
+        VeryLong p = VeryLong::firstPrime();
+        bool done = false;
+        while (!done)
+        {
+            while (l_U % p == zero) p = VeryLong::nextPrime();
+            VeryLongModular::set_default_modulus(p);
+            const VeryLongModular one(1L);
+            Polynomial<VeryLongModular> Up = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U, p);
+            Polynomial<VeryLongModular> U1p = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(U.derivative(), p);
+            auto gg = gcd<Polynomial<VeryLongModular> >(Up, U1p);
+            if (gg.deg() == 0) done = true;
+            else p = VeryLong::nextPrime();
+        }
+        if (debug) std::cout << ">>>> " << "p = " << p << std::endl;
+        VeryLongModular::set_default_modulus(p);
+        std::vector<Polynomial<VeryLongModular> > factors_;
+        if (timing) LLL_timing->start("factor_over_F_p");
+        factor_over_F_p<VeryLong, VeryLong, VeryLongModular>(A, p, factors_);
+        if (timing) LLL_timing->stop();
+        /*
+         * In the third step we assume that we know a decomposition f = f1 f2 in Z[X] such that the complete factorization of 
+         * f1 in Z[X] and (f2 mod p) in Fp[X] are known. 
+         */
+        std::vector<VeryLong> c(1);
+        c[0] = 1L;
+        Polynomial<VeryLong> polyone(c);
+        Polynomial<VeryLong> polyminusone(-polyone);
+        /* 
+         * At the start we can take f1 = 1, f2 = f. In this situation we proceed 
+         * as follows. If f2 = +/- 1 then f = +/- f1 is completely factored in Z[X], and the algorithm stops. 
+         */
+        Polynomial<VeryLong> f1(polyone);
+        Polynomial<VeryLong> f2(A); 
+        while (f2 != polyone && f2 != polyminusone)
+        {
+            if (debug) std::cout << ">>>> " << "f1 = " << f1 << ", f2 = " << f2 << std::endl;
+            /* 
+             * Suppose now that f2 has positive degree, and choose an irreducible factor (h mod p) of (f2 mod p) in Fp[X]. We may assume that the 
+             * coefficients of h are reduced module p and that h has leading coefficient 1. Then we are in the situation described
+             * at the start of algorithm (3.3) with f2 in the role of f, and we use that algorithm to find the irreducible factor 
+             * h0 of f2 in Z[X] for which (h mod p) divides (h0 mod p). 
+             */
+            Polynomial<VeryLongModular> h = factors_[0];
+            Polynomial<VeryLongModular> rest = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(A, p) / h;
+            if (timing) LLL_timing->start("find_irreducible_factor_LLL");
+            auto h0 = find_irreducible_factor_LLL(A, p, lift<VeryLong, VeryLongModular>(h), lift<VeryLong, VeryLongModular>(rest));
+            if (timing) LLL_timing->stop();
+            if (debug) std::cout << ">>>> " << "h0 = " << h0 << std::endl;
+            factors.push_back(h0);
+            /* 
+             * We now replace f1 and f2 by f1 h0 and f2/h0 respectively. 
+             * and from the list of irreducible factors of (f2 mod p) we delete those that divide (h0 mod p). After this we 
+             * return to the beginning of the third step.
+             */
+            f1 *= h0;
+            f2 /= h0;
+            if (debug) std::cout << ">>>> " << "f1 = " << f1 << ", f2 = " << f2 << std::endl;
+            std::vector<Polynomial<VeryLongModular> > new_factors_;
+            Polynomial<VeryLongModular> h0_ = convert_to_F_p<VeryLong, VeryLong, VeryLongModular>(h0, p);
+            for (auto& ff : factors_)
+            {
+                if ((h0_ / ff) * ff != h0_)
+                {
+                    new_factors_.push_back(ff);
+                }
+            }
+            factors_ = new_factors_;
+        }
+    }
+    else
+    {
+        // R(f,f') = 0
+        /*
+         * Suppose now that R(f,f') = 0, let g be the gcd of f and f' in Z[X], and put f0 = f / g.
+         * Then f0 has no multiple factors in Z[X], so R(f0,f0') != 0, and we can factor f0 using the main part of the algorithm.
+         * Since each irreducible factor of g in Z[X] divides f0 we can now complete the factorization of f = f0g by a few trial
+         * divisions.
+         */
+        auto f0 = A / g;
+        if (debug) std::cout << ">>>> f0 = " << f0 << std::endl;
+        VeryLong cont1;
+        std::vector<Polynomial<VeryLong> > factors1;
+        factor_LLL(f0, factors1, cont1);
+        Polynomial<VeryLong> AAA(AA);
+        for (auto& ff : factors1)
+        {
+            while (divides(ff, AAA))
+            {
+                factors.push_back(ff);
+                AAA /= ff;
+            } 
+        }
+    }
+    if (timing) delete LLL_timing;
+}

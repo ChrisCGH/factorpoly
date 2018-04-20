@@ -2,6 +2,7 @@
 #define __NEWMATRIX_H
 #include <vector>
 #include <sstream>
+#include <iostream>
 #if 0
 #include "Polynomial.h"
 #endif

@@ -1,6 +1,5 @@
 #ifndef _POW_H
 #define _POW_H
-
 // template for generic power function
 // Algorithm 1.2.1 (Right-Left Binary)
 template <class T, class Z>
@@ -11,7 +10,10 @@ T pow(const T& g, const Z& n)
     const Z two(2L);
     // Step 1. [Initialize]
     T y(1L);
-    if (n == zero) return y;
+    if (n == zero) 
+    {
+        return y;
+    }
 
     if (n < zero)
     {
@@ -28,7 +30,10 @@ T pow(const T& g, const Z& n)
 
         // Step 3. [Halve N]
         N = N / two;
-        if (N == zero) return y;
+        if (N == zero) 
+        {
+            return y;
+        }
         z *= z;
     }
 }
