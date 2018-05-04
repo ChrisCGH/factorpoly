@@ -175,6 +175,10 @@ template <> Polynomial<VeryLong> Polynomial<VeryLong>::read_polynomial(std::istr
 // Algorithm 3.3.1 (Sub-Resultant GCD)
 Polynomial<VeryLong> sub_resultant_GCD(const Polynomial<VeryLong>& AA, const Polynomial<VeryLong>& BB)
 {
+    bool debug = false;
+    if (std::getenv("FACTOR_VERBOSE_OUTPUT") && (::atoi(std::getenv("FACTOR_VERBOSE_OUTPUT")) & 128)) debug = true;
+    if (debug) std::cout << "+++++ sub_resultant_GCD:" << std::endl;
+    if (debug) std::cout << "+++++ AA = " << AA << ", BB = " << BB << std::endl;
     Polynomial<VeryLong> A = AA;
     Polynomial<VeryLong> B = BB;
     // Step 1. [Initializations and reductions]
@@ -197,27 +201,57 @@ Polynomial<VeryLong> sub_resultant_GCD(const Polynomial<VeryLong>& AA, const Pol
     while (1)
     {
         // Step 2. [Pseudo division]
+        if (debug) std::cout << "+++++ Step 2. " << std::endl;
         int delta = A.deg() - B.deg();
         Polynomial<VeryLong> Q;
         Polynomial<VeryLong> R;
         pseudo_divide(A, B, Q, R);
+        if (debug) std::cout << "+++++ A = " << A << ", B = " << B << ", Q = " << Q << ", R = " << R << std::endl;
+#ifdef DO_CHECKS
+        // Check
+        //                    delta+1
+        // We should have l(B)       A = BQ + R
+        //
+        auto check1 = pow<VeryLong, int>(B.coefficient(B.deg()), delta + 1) * A;
+        auto check2 = B * Q + R;
+        if (check1 != check2)
+        {
+            std::cout << "Problem! : check1 = " << check1 << ", check2 = " << check2 << std::endl;
+        }
+        if (debug) std::cout << "+++++ check1 - check2 = " << check1 - check2 << std::endl;
+#endif
+
         if (R == Polynomial<VeryLong>(zero))
         {
+            // Step 4. [Terminate]
+            if (debug) std::cout << "+++++ Step 4. R == 0 " << std::endl;
             Polynomial<VeryLong> res = B / B.content();
             res = d * res;
             return res;
         }
         if (R.deg() == 0)
         {
+            // Step 4. [Terminate]
+            if (debug) std::cout << "+++++ Step 4. deg(R) == 0 " << std::endl;
             Polynomial<VeryLong> res(d);
             return res;
         }
+
+        // Step 3. [Reduce remainder]
+        if (debug) std::cout << "+++++ Step 3. " << std::endl;
         A = B;
         VeryLong e = g * pow<VeryLong, int>(h, delta);
         B = R / e;
         g = A.coefficient(A.deg());
-        VeryLong f = pow<VeryLong, int>(h, delta - 1);
-        h = pow<VeryLong, int>(g, delta) / f;
+        if (delta < 1L)
+        {
+            h = pow<VeryLong, int>(g, delta) * pow<VeryLong, int>(h, 1 - delta);
+        }
+        else
+        {
+            h = pow<VeryLong, int>(g, delta) / pow<VeryLong, int>(h, delta - 1);
+        }
+        if (debug) std::cout << "+++++ A = " << A << ", B = " << B << ", g = " << g << ", h = " << h << ", delta = " << delta << std::endl;
     }
 }
 
@@ -2162,7 +2196,14 @@ bool find_h0_LLL(const Polynomial<VeryLong>& f,
         Polynomial<VeryLong> bi(c);
         if (length(bi) < limit)
         {
-            bb.push_back(bi);
+            if (bi.coefficient(bi.deg()) < 0L)
+            {
+                bb.push_back(-bi);
+            }
+            else
+            {
+                bb.push_back(bi);
+            }
         }
     }
     size_t t = bb.size();

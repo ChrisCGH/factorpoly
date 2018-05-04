@@ -14,42 +14,54 @@ std::string handler(const std::string& polynomial_string)
     Polynomial<VeryLong> poly = Polynomial<VeryLong>::read_polynomial(polynomial_string.c_str());
     std::vector<Polynomial<VeryLong> > factors;
     VeryLong cont;
-    Polynomial<VeryLong>::factor(poly, factors, cont);
-    //Polynomial<VeryLong>::factor_LLL(poly, factors, cont);
-#if 0
-    // Check that poly is fully factored
-    Polynomial<VeryLong> remaining_part(poly);
-    for (auto& factor: factors)
+    bool factor_double_check = false;
+    if (std::getenv("FACTOR_DOUBLE_CHECK") && (::atoi(std::getenv("FACTOR_DOUBLE_CHECK")) & 1)) factor_double_check = true;
+    bool factor_use_LLL = false;
+    if (std::getenv("FACTOR_USE_LLL") && (::atoi(std::getenv("FACTOR_USE_LLL")) & 1)) factor_use_LLL = true;
+    if (factor_use_LLL)
     {
-        remaining_part /= factor;
+        Polynomial<VeryLong>::factor_LLL(poly, factors, cont);
     }
-    if (remaining_part.deg() > 0)
+    else
     {
-        factors.push_back(remaining_part);
+        Polynomial<VeryLong>::factor(poly, factors, cont);
     }
 
-    // Check that factors can't be factored more
-    bool done = false;
-    while (!done)    
+    if (factor_double_check)
     {
-        std::vector<Polynomial<VeryLong> > newfactors;
+        // Check that poly is fully factored
+        Polynomial<VeryLong> remaining_part(poly);
         for (auto& factor: factors)
         {
-            std::vector<Polynomial<VeryLong> > subfactors;
-            VeryLong subcont;
-            Polynomial<VeryLong>::factor(factor, subfactors, subcont);
-            newfactors.insert(std::end(newfactors), std::begin(subfactors), std::end(subfactors));
+            remaining_part /= factor;
         }
-        if (newfactors.size() == factors.size())
+        if (remaining_part.deg() > 0)
         {
-            done = true;
+            factors.push_back(remaining_part);
         }
-        else
+    
+        // Check that factors can't be factored more
+        bool done = false;
+        while (!done)    
         {
-            factors = newfactors;
+            std::vector<Polynomial<VeryLong> > newfactors;
+            for (auto& factor: factors)
+            {
+                std::vector<Polynomial<VeryLong> > subfactors;
+                VeryLong subcont;
+                Polynomial<VeryLong>::factor(factor, subfactors, subcont);
+                newfactors.insert(std::end(newfactors), std::begin(subfactors), std::end(subfactors));
+            }
+            if (newfactors.size() == factors.size())
+            {
+                done = true;
+            }
+            else
+            {
+                factors = newfactors;
+            }
         }
     }
-#endif
     // Gather common factors
     std::map<std::string, int> gathered_factors;
     for (auto& factor: factors)
